@@ -1,63 +1,54 @@
-# What-2-Eat v1 — Katalog Makanan (Design / PRD)
+# What-2-Eat v1 — Food Catalog (Design / PRD)
 
 - Date: 2026-09-22
-- Status: draft, menunggu review Farrel
-- Scope sesi ini: PRD saja. Tidak ada implementasi.
+- Status: draft, pending Farrel's review
+- Session scope: PRD only. No implementation.
+- Language: English (translated from the original Indonesian).
+- Note: the CRUD deferral in §§2 and 10 is superseded by `2026-09-22-what-2-eat-crud.md` (localStorage-backed CRUD, public, single entity).
 
 ## 1. Goal
 
-Dalam <30 detik Farrel bisa menjawab "makan apa?" lewat filter tag +
-area atau tombol shuffle.
+In <30 seconds Farrel can answer "what to eat?" via tag + area filters or a shuffle button.
 
 Success criteria:
 
-- Filter tag (OR) + search nama + filter area bekerja dan konsisten
-  dengan shuffle.
-- Shuffle hanya mengambil dari hasil yang sedang terfilter.
-- Empty state jelas + tombol reset bekerja.
-- `pnpm build` lolos tanpa env Shopify.
+- Tag filter (OR) + name search + area filter work and stay consistent with shuffle.
+- Shuffle only draws from the currently filtered results.
+- Clear empty state + working reset button.
+- `pnpm build` passes without Shopify env.
 
 ## 2. Non-goals v1
 
-- CRUD UI (tambah/edit/hapus lewat edit `foods.json` + commit).
-- Database, auth, foto, harga, rating, link Maps, jam buka.
-- Cart/checkout Shopify, Eve agent, i18n/Markets.
+- CRUD UI (add/edit/delete by editing `foods.json` + commit).
+- Database, auth, photos, prices, ratings, Maps links, opening hours.
+- Shopify cart/checkout, Eve agent, i18n/Markets.
 
-## 3. Konteks template (keputusan arsitektur)
+## 3. Template context (architecture decisions)
 
-Project ini adalah template e-commerce Vercel Shop (Next.js 16 +
-Shopify Hydrogen SDK + cart/checkout + Eve agent). Untuk katalog
-pribadi itu overkill, tapi diputuskan: **pakai resource yang ada,
-nonaktifkan yang tidak perlu, jangan hapus.**
+This project is the Vercel Shop e-commerce template (Next.js 16 + Shopify Hydrogen SDK + cart/checkout + Eve agent). Overkill for a personal catalog, but decided: **use what exists, disable what is unneeded, delete nothing.**
 
-Artinya di v1:
+Meaning for v1:
 
 - `shopConfig.auth.isEnabled = false`, `agent.isEnabled = false`.
-- Rute baru tidak memanggil operasi Shopify.
-- Navigasi menunjuk ke katalog. Tidak ada file Shopify/cart/Eve yang
-  dihapus di v1 (konsekuensi: bundle/lint tetap membawa sisa itu).
+- New routes do not call Shopify operations.
+- Navigation points at the catalog. No Shopify/cart/Eve files deleted in v1 (consequence: bundle/lint still carry those leftovers).
 
 ## 4. Data model
 
 ```ts
 type FoodPlace = {
-  id: string; // slug, mis. "soto-cak-har"
+  id: string; // slug, e.g. "soto-cak-har"
   name: string;
-  tags: string[]; // 2-5 per tempat
-  area: string; // v1 selalu "surabaya" (city-level)
+  tags: string[]; // 2-5 per place
+  area: string; // v1 always "surabaya" (city-level)
 };
 ```
 
-- `TAG_CATALOG` = union semua `tags` di seed, di-sort. Daftar baku
-  awal diturunkan dari 17 seed; entri baru boleh membawa string tag
-  baru (hybrid: baku tapi bisa tambah).
-- Aturan tag: satu kata, Title Case, tanpa duplikat makna (pakai
-  `Noodles`, bukan `Noodle`/`Mie` bergantian).
-- Tag = agregat semua menu di satu tempat. Filter `Rice` + `Beef`
-  (OR) = "tempat yang menjual salah satunya", bukan "satu dish yang
-  mengandung keduanya".
+- `TAG_CATALOG` = union of all `tags` in the seed, sorted. The initial canonical list derives from the 17 seeds; new entries may bring new tag strings (hybrid: canonical but extensible).
+- Tag rules: single word, Title Case, no meaning duplicates (use `Noodles`, not `Noodle`/`Mie` interchangeably).
+- Tag = aggregate of every dish at one place. Filter `Rice` + `Beef` (OR) = "places selling either one", not "one dish containing both".
 
-## 5. Seed data (17 tempat, semua `area: "surabaya"`)
+## 5. Seed data (17 places, all `area: "surabaya"`)
 
 | id | name | tags |
 |---|---|---|
@@ -79,58 +70,39 @@ type FoodPlace = {
 | aeon | AEON | Food Court, Japanese |
 | taria | Taria | Coffee |
 
-Catatan: sebagian tag di atas adalah usulan awal dan belum
-diverifikasi (Dikichi, Warkam, J-One, Uncle W, AEON, Taria). Farrel
-akan membetulkan sendiri setelah rollout.
+Note: some tags above are initial guesses and unverified (Dikichi, Warkam, J-One, Uncle W, AEON, Taria). Farrel will correct them himself after rollout.
 
-## 6. UX v1 (satu halaman `/foods`)
+## 6. UX v1 (single `/foods` page)
 
-1. Search nama (contains, case-insensitive) + multi-select tag (OR) +
-   single-select area (v1 isinya hanya Surabaya; tetap ada sebagai
-   fondasi untuk Malang) + result count.
-2. Grid cards **statis** — klik tidak mengarah ke mana-mana, tidak ada
-   halaman detail di v1. Card = nama + chips tag + area.
-3. Tombol "Pilih acak dari hasil ini" menampilkan 1 hasil secara
-   prominent + tombol shuffle ulang. Shuffle mengambil dari array
-   yang sedang terfilter, bukan dari seluruh data.
-4. Empty state: "Tidak ada yang cocok — kurangi tag / reset filter" +
-   tombol reset.
+1. Name search (contains, case-insensitive) + multi-select tags (OR) + single-select area (v1 holds only Surabaya; kept as foundation for Malang) + result count.
+2. **Static** grid cards — clicks go nowhere, no detail page in v1. Card = name + tag chips + area.
+3. A "Pilih acak dari hasil ini" ("Pick random from these results") button shows 1 result prominently + a re-shuffle button. Shuffle draws from the currently filtered array, not the whole dataset.
+4. Empty state: "Tidak ada yang cocok — kurangi tag / reset filter" ("No matches — drop some tags / reset filters") + reset button.
 
 ## 7. Routing
 
-- Halaman katalog tinggal di `/foods`.
-- `app/page.tsx` lama **dipertahankan tapi tidak dipakai**: isinya
-  redirect ke `/foods` sehingga buka pertama kali langsung masuk
-  katalog.
+- The catalog page lives at `/foods`.
+- The old `app/page.tsx` is **kept but unused**: it redirects to `/foods` so first open lands straight in the catalog.
 
-## 8. File plan (dipakai saat build, bukan sesi ini)
+## 8. File plan (used at build time, not this session)
 
 - `lib/foods/types.ts` — `FoodPlace`, `TAG_CATALOG`.
-- `lib/foods/index.ts` — pure helpers: filter OR, search, shuffle,
-  derivasi katalog tag. Aman untuk import server maupun client.
-- `lib/foods/server.ts` — baca JSON seed (import statis atau
-  `"use cache"` ringan; diputuskan saat build).
-- `lib/foods/data/foods.json` — 17 seed di atas.
-- `app/foods/page.tsx` — Server Component, komposisi shell katalog.
-- Komponen katalog di bawah `components/foods/`, mengikuti konvensi
-  template (`components/ui/` hanya menerima primitive props).
+- `lib/foods/index.ts` — pure helpers: OR filter, search, shuffle, tag-catalog derivation. Safe to import from server and client alike.
+- `lib/foods/server.ts` — reads the JSON seed (static import or light `"use cache"`; decided at build).
+- `lib/foods/data/foods.json` — the 17 seeds above.
+- `app/foods/page.tsx` — Server Component, catalog shell composition.
+- Catalog components under `components/foods/`, following template conventions (`components/ui/` takes primitive props only).
 
 ## 9. Acceptance v1
 
-- [ ] 17 seed tampil; filter `Rice` memunculkan Yoshinoya; filter
-  `Rice` + `Pizza` (OR) menampilkan gabungan, bukan irisan.
-- [ ] Search "gacoan" hanya menampilkan Mie Gacoan.
-- [ ] Shuffle 5x dari hasil filter berisi 3 item selalu menghasilkan
-  salah satu dari 3 itu, tidak pernah di luar.
-- [ ] 0 hasil menampilkan empty state + reset bekerja.
-- [ ] `pnpm build` lolos tanpa `.env` Shopify.
+- [ ] All 17 seeds render; `Rice` filter shows Yoshinoya; `Rice` + `Pizza` (OR) shows the union, not the intersection.
+- [ ] Search "gacoan" shows only Mie Gacoan.
+- [ ] 5 shuffles from a 3-item filtered result always yield one of those 3, never an outsider.
+- [ ] 0 results show the empty state + reset works.
+- [ ] `pnpm build` passes without `.env` Shopify.
 
-## 10. Risiko / hal yang ditunda
+## 10. Risks / deferred items
 
-- Sisa Shopify/cart/Eve tetap ada di repo (tidak dihapus) — tech debt
-  yang disengaja untuk v1.
-- CRUD UI ditunda: sebelum ada database, UI CRUD tidak akan persist
-  di Vercel/Netlify. Arsitektur backend (DB vs git-based) diputuskan
-  di fase berikutnya setelah frontend terlihat.
-- Filter area single-value di v1 — sengaja sebagai fondasi, bukan
-  fitur yang berguna hari ini.
+- Shopify/cart/Eve leftovers stay in the repo (not deleted) — deliberate v1 tech debt.
+- CRUD UI deferred: without a database, a CRUD UI will not persist on Vercel/Netlify. Backend architecture (DB vs. git-based) to be decided in a later phase once the frontend is visible. (Superseded: see `2026-09-22-what-2-eat-crud.md` — localStorage-backed CRUD.)
+- Single-value area filter in v1 — deliberate as foundation, not as a useful feature today.
