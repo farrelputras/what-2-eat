@@ -5,6 +5,7 @@
 - Session scope: PRD only. No implementation.
 - Language: English (per request).
 - Supplements: `2026-09-22-what-2-eat-design.md` (v1 catalog spec, Indonesian). That doc deferred CRUD UI; this doc specifies it.
+- Note: the localStorage storage decision (§§3–5, §8.5) and the public/no-login access model are superseded by `2026-09-22-what-2-eat-firebase.md` (Firestore + login-required, global shared). This doc remains the archive of the device-local iteration.
 
 ## 1. Goal
 
