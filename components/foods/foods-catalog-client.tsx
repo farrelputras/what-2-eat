@@ -1,13 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useMemo, useRef, useState, type MouseEvent } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { filterFoods, pickRandomFood } from "@/lib/foods";
+import {
+  deriveAreaCatalog,
+  deriveTagCatalog,
+  filterFoods,
+  pickRandomFood,
+  type FoodInput,
+} from "@/lib/foods";
+import { useFoods } from "@/lib/foods/client";
 import type { FoodPlace } from "@/lib/foods/types";
+
+import { FoodFormDialog } from "./food-form-client";
 
 interface FoodsCatalogClientProps {
   areas: string[];
@@ -21,42 +32,102 @@ function formatArea(area: string): string {
 }
 
 export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientProps) {
+  const {
+    createPlace,
+    foods: mergedFoods,
+    mounted,
+    persistent,
+    removePlace,
+    updatePlace,
+  } = useFoods(foods);
+  const catalogFoods = mounted ? mergedFoods : foods;
+  const catalogTags = mounted ? deriveTagCatalog(mergedFoods) : tags;
+  const catalogAreas = mounted ? deriveAreaCatalog(mergedFoods) : areas;
+
   const [search, setSearch] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [area, setArea] = useState("all");
-  const [picked, setPicked] = useState<FoodPlace | null>(null);
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const [form, setForm] = useState<{ place: FoodPlace | null } | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+
+  const visibleTags = useMemo(
+    () => selectedTags.filter((tag) => catalogTags.includes(tag)),
+    [catalogTags, selectedTags],
+  );
+  const effectiveArea = area === "all" || catalogAreas.includes(area) ? area : "all";
 
   const filtered = useMemo(
-    () => filterFoods(foods, { area, search, tags: selectedTags }),
-    [area, foods, search, selectedTags],
+    () => filterFoods(catalogFoods, { area: effectiveArea, search, tags: visibleTags }),
+    [catalogFoods, effectiveArea, search, visibleTags],
   );
+  const picked = pickedId ? (catalogFoods.find((place) => place.id === pickedId) ?? null) : null;
 
   function toggleTag(tag: string): void {
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
     );
-    setPicked(null);
+    setPickedId(null);
   }
 
   function handleSearch(value: string): void {
     setSearch(value);
-    setPicked(null);
+    setPickedId(null);
   }
 
   function handleArea(value: string): void {
     setArea(value);
-    setPicked(null);
+    setPickedId(null);
   }
 
   function handleShuffle(): void {
-    setPicked(pickRandomFood(filtered) ?? null);
+    setPickedId(pickRandomFood(filtered)?.id ?? null);
   }
 
   function handleReset(): void {
     setArea("all");
-    setPicked(null);
+    setPickedId(null);
     setSearch("");
     setSelectedTags([]);
+  }
+
+  function openCreate(event: MouseEvent<HTMLButtonElement>): void {
+    triggerRef.current = event.currentTarget;
+    setForm({ place: null });
+  }
+
+  function openEdit(event: MouseEvent<HTMLButtonElement>, place: FoodPlace): void {
+    triggerRef.current = event.currentTarget;
+    setConfirmId(null);
+    setForm({ place });
+  }
+
+  function closeForm(): void {
+    setForm(null);
+    triggerRef.current?.focus();
+  }
+
+  function handleFormSubmit(input: FoodInput): void {
+    if (form?.place) {
+      updatePlace(form.place.id, input);
+      toast.success("Perubahan disimpan.");
+    } else {
+      createPlace(input);
+      toast.success("Tempat ditambahkan.");
+    }
+    closeForm();
+  }
+
+  function handleDeleteClick(place: FoodPlace): void {
+    if (confirmId === place.id) {
+      removePlace(place.id);
+      if (pickedId === place.id) setPickedId(null);
+      setConfirmId(null);
+      toast.success("Tempat dihapus.");
+    } else {
+      setConfirmId(place.id);
+    }
   }
 
   const isFiltered = search.trim() !== "" || selectedTags.length > 0 || area !== "all";
@@ -79,8 +150,8 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
         <div className="grid gap-2.5">
           <p className="text-sm font-medium">Tag (pilih satu atau lebih)</p>
           <div className="flex flex-wrap gap-2.5">
-            {tags.map((tag) => {
-              const active = selectedTags.includes(tag);
+            {catalogTags.map((tag) => {
+              const active = visibleTags.includes(tag);
               return (
                 <Button
                   key={tag}
@@ -98,13 +169,13 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
 
         <div className="grid gap-2.5">
           <p className="text-sm font-medium">Area</p>
-          <Select value={area} onValueChange={(value) => handleArea(value ?? "all")}>
+          <Select value={effectiveArea} onValueChange={(value) => handleArea(value ?? "all")}>
             <SelectTrigger className="w-52">
-              <span>{formatArea(area)}</span>
+              <span>{formatArea(effectiveArea)}</span>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Semua area</SelectItem>
-              {areas.map((item) => (
+              {catalogAreas.map((item) => (
                 <SelectItem key={item} value={item}>
                   {formatArea(item)}
                 </SelectItem>
@@ -115,14 +186,23 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
 
         <div className="flex flex-wrap items-center gap-4">
           <p className="text-sm text-muted-foreground" aria-live="polite">
-            {filtered.length} dari {foods.length} tempat
+            {filtered.length} dari {catalogFoods.length} tempat
           </p>
           {isFiltered && (
             <Button onClick={handleReset} size="sm" variant="ghost">
               Reset filter
             </Button>
           )}
+          <Button onClick={openCreate} size="sm" variant="outline">
+            <Plus />
+            Tambah tempat
+          </Button>
         </div>
+        <p className="text-xs text-muted-foreground">
+          {persistent
+            ? "Tambahanmu tersimpan di perangkat ini."
+            : "Penyimpanan penuh — perubahan hanya berlaku sesi ini."}
+        </p>
       </div>
 
       <div className="grid gap-2.5">
@@ -166,7 +246,27 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((place) => (
             <li key={place.id} className="rounded-lg border bg-card p-5 grid gap-2.5 content-start">
-              <p className="font-medium">{place.name}</p>
+              <div className="flex items-start justify-between gap-2.5">
+                <p className="font-medium">{place.name}</p>
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    aria-label={`Ubah ${place.name}`}
+                    onClick={(event) => openEdit(event, place)}
+                    size="icon-sm"
+                    variant="ghost"
+                  >
+                    <Pencil />
+                  </Button>
+                  <Button
+                    aria-label={`Hapus ${place.name}`}
+                    onClick={() => handleDeleteClick(place)}
+                    size="icon-sm"
+                    variant="ghost"
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              </div>
               <div className="flex flex-wrap gap-2.5">
                 {place.tags.map((tag) => (
                   <Badge key={tag} variant="secondary">
@@ -175,9 +275,38 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
                 ))}
               </div>
               <p className="text-sm text-muted-foreground">{formatArea(place.area)}</p>
+              {confirmId === place.id && (
+                <div className="grid gap-2.5 rounded-md border border-destructive/50 p-2.5">
+                  <p className="text-sm">Hapus {place.name}?</p>
+                  <div className="flex gap-2.5">
+                    <Button onClick={() => setConfirmId(null)} size="sm" variant="outline">
+                      Batal
+                    </Button>
+                    <Button
+                      onClick={() => handleDeleteClick(place)}
+                      size="sm"
+                      variant="destructive"
+                    >
+                      Ya, hapus
+                    </Button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
+      )}
+
+      {form && (
+        <FoodFormDialog
+          areas={catalogAreas}
+          existing={catalogFoods}
+          key={form.place?.id ?? "new"}
+          onClose={closeForm}
+          onSubmit={handleFormSubmit}
+          open
+          place={form.place}
+        />
       )}
     </div>
   );
