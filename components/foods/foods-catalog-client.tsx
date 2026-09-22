@@ -27,7 +27,7 @@ interface FoodsCatalogClientProps {
 }
 
 function formatArea(area: string): string {
-  if (area === "all") return "Semua area";
+  if (area === "all") return "All areas";
   return area.charAt(0).toUpperCase() + area.slice(1);
 }
 
@@ -111,10 +111,10 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
   function handleFormSubmit(input: FoodInput): void {
     if (form?.place) {
       updatePlace(form.place.id, input);
-      toast.success("Perubahan disimpan.");
+      toast.success("Changes saved.");
     } else {
       createPlace(input);
-      toast.success("Tempat ditambahkan.");
+      toast.success("Place added.");
     }
     closeForm();
   }
@@ -124,7 +124,7 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
       removePlace(place.id);
       if (pickedId === place.id) setPickedId(null);
       setConfirmId(null);
-      toast.success("Tempat dihapus.");
+      toast.success("Place removed.");
     } else {
       setConfirmId(place.id);
     }
@@ -137,18 +137,18 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
       <div className="grid gap-5">
         <div className="grid gap-2.5">
           <label htmlFor="foods-search" className="text-sm font-medium">
-            Cari nama tempat
+            Search places by name
           </label>
           <Input
             id="foods-search"
-            placeholder="Mis. gacoan, soto, sushi…"
+            placeholder="E.g. gacoan, soto, sushi…"
             value={search}
             onChange={(event) => handleSearch(event.target.value)}
           />
         </div>
 
         <div className="grid gap-2.5">
-          <p className="text-sm font-medium">Tag (pilih satu atau lebih)</p>
+          <p className="text-sm font-medium">Tags (select one or more)</p>
           <div className="flex flex-wrap gap-2.5">
             {catalogTags.map((tag) => {
               const active = visibleTags.includes(tag);
@@ -174,7 +174,7 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
               <span>{formatArea(effectiveArea)}</span>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Semua area</SelectItem>
+              <SelectItem value="all">All areas</SelectItem>
               {catalogAreas.map((item) => (
                 <SelectItem key={item} value={item}>
                   {formatArea(item)}
@@ -186,22 +186,22 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
 
         <div className="flex flex-wrap items-center gap-4">
           <p className="text-sm text-muted-foreground" aria-live="polite">
-            {filtered.length} dari {catalogFoods.length} tempat
+            {filtered.length} of {catalogFoods.length} places
           </p>
           {isFiltered && (
             <Button onClick={handleReset} size="sm" variant="ghost">
-              Reset filter
+              Reset filters
             </Button>
           )}
           <Button onClick={openCreate} size="sm" variant="outline">
             <Plus />
-            Tambah tempat
+            Add place
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
           {persistent
-            ? "Tambahanmu tersimpan di perangkat ini."
-            : "Penyimpanan penuh — perubahan hanya berlaku sesi ini."}
+            ? "Your additions are saved on this device."
+            : "Storage is full — changes apply to this session only."}
         </p>
       </div>
 
@@ -212,11 +212,11 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
           variant="secondary"
           className="w-fit"
         >
-          Pilih acak dari hasil ini
+          Pick randomly from these results
         </Button>
         {picked && (
           <div className="rounded-lg border bg-card p-5 grid gap-2.5" aria-live="polite">
-            <p className="text-sm text-muted-foreground">Hasil acak untukmu:</p>
+            <p className="text-sm text-muted-foreground">Your random pick:</p>
             <p className="text-2xl font-semibold">{picked.name}</p>
             <div className="flex flex-wrap gap-2.5">
               {picked.tags.map((tag) => (
@@ -228,7 +228,7 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
             </div>
             <div>
               <Button onClick={handleShuffle} size="sm" variant="outline">
-                Acak lagi
+                Shuffle again
               </Button>
             </div>
           </div>
@@ -237,9 +237,9 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
 
       {filtered.length === 0 ? (
         <div className="grid gap-2.5 rounded-lg border border-dashed p-10 text-center justify-items-center">
-          <p className="text-lg font-medium">Tidak ada yang cocok — kurangi tag / reset filter</p>
+          <p className="text-lg font-medium">No matches — remove tags or reset filters</p>
           <Button onClick={handleReset} variant="outline">
-            Reset filter
+            Reset filters
           </Button>
         </div>
       ) : (
@@ -250,7 +250,7 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
                 <p className="font-medium">{place.name}</p>
                 <div className="flex shrink-0 gap-1">
                   <Button
-                    aria-label={`Ubah ${place.name}`}
+                    aria-label={`Edit ${place.name}`}
                     onClick={(event) => openEdit(event, place)}
                     size="icon-sm"
                     variant="ghost"
@@ -258,7 +258,7 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
                     <Pencil />
                   </Button>
                   <Button
-                    aria-label={`Hapus ${place.name}`}
+                    aria-label={`Delete ${place.name}`}
                     onClick={() => handleDeleteClick(place)}
                     size="icon-sm"
                     variant="ghost"
@@ -277,17 +277,17 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
               <p className="text-sm text-muted-foreground">{formatArea(place.area)}</p>
               {confirmId === place.id && (
                 <div className="grid gap-2.5 rounded-md border border-destructive/50 p-2.5">
-                  <p className="text-sm">Hapus {place.name}?</p>
+                  <p className="text-sm">Delete {place.name}?</p>
                   <div className="flex gap-2.5">
                     <Button onClick={() => setConfirmId(null)} size="sm" variant="outline">
-                      Batal
+                      Cancel
                     </Button>
                     <Button
                       onClick={() => handleDeleteClick(place)}
                       size="sm"
                       variant="destructive"
                     >
-                      Ya, hapus
+                      Yes, delete
                     </Button>
                   </div>
                 </div>

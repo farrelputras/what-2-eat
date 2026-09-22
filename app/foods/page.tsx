@@ -7,8 +7,8 @@ import { Sections } from "@/components/ui/sections";
 import { getAllFoods, getAreaCatalog, getTagCatalog } from "@/lib/foods/server";
 
 export const metadata: Metadata = {
-  description: "Filter tag dan area atau acak dari hasil yang sedang tampil.",
-  title: "Mau makan apa?",
+  description: "Filter by tags and area, or pick randomly from the current results.",
+  title: "What to eat?",
 };
 
 export default function FoodsPage() {
@@ -21,10 +21,9 @@ export default function FoodsPage() {
       <Container>
         <Sections className="gap-5">
           <div className="grid gap-2.5">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl">Mau makan apa?</h1>
+            <h1 className="text-3xl sm:text-4xl md:text-5xl">What to eat?</h1>
             <p className="text-sm md:text-base text-muted-foreground max-w-xl">
-              Filter berdasarkan tag dan area, atau biarkan acak yang memilih dari hasil yang sedang
-              tampil.
+              Filter by tags and area, or let shuffle pick from the current results.
             </p>
           </div>
           <FoodsCatalog areas={areas} foods={foods} tags={tags} />

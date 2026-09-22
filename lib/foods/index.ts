@@ -78,16 +78,18 @@ export function validateFoodInput(
       const field = issue.path[0];
       if (field === "name" && !errors.name) {
         errors.name =
-          issue.code === "too_big" ? "Nama maksimal 80 karakter" : "Nama tempat wajib diisi";
+          issue.code === "too_big"
+            ? "Name must be at most 80 characters"
+            : "Place name is required";
       } else if (field === "area" && !errors.area) {
-        errors.area = "Pilih area";
+        errors.area = "Select an area";
       } else if (field === "tags" && !errors.tags) {
         errors.tags =
           issue.code === "too_big"
             ? issue.path.length > 1
-              ? "Tiap tag maksimal 24 karakter"
-              : "Maksimal 8 tag"
-            : "Tambahkan minimal 1 tag";
+              ? "Each tag must be at most 24 characters"
+              : "Maximum 8 tags"
+            : "Add at least 1 tag";
       }
     }
   }
@@ -97,7 +99,7 @@ export function validateFoodInput(
         place.id !== excludeId &&
         normalizeFoodName(place.name).toLowerCase() === normalized.name.toLowerCase(),
     );
-    if (duplicate) errors.name = "Sudah ada tempat dengan nama ini";
+    if (duplicate) errors.name = "A place with this name already exists";
   }
   return errors;
 }
@@ -120,7 +122,7 @@ export function slugFoodId(name: string): string {
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "tempat";
+      .replace(/^-+|-+$/g, "") || "place";
   const rand = Math.floor(Math.random() * 0x10000)
     .toString(16)
     .padStart(4, "0");

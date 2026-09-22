@@ -77,7 +77,7 @@ Enforced in the existing pure helpers (`lib/foods/index.ts`) so any future serve
 | Both URLs | If non-empty, must parse as an `https://` URL (zod `.url()`-style check plus protocol check). Max ~300 chars to bound storage. No domain restriction (locked decision). |
 | Both URLs | Displayed as typed (no canonicalization beyond trim); opened verbatim in a new tab. |
 
-`FoodInput` / `FoodInputErrors` each gain `instagramUrl?` / `tiktokUrl?`. `validateFoodInput` applies the same rule to both fields with inline Indonesian messages (e.g. `"Tautan harus diawali https://"`).
+`FoodInput` / `FoodInputErrors` each gain `instagramUrl?` / `tiktokUrl?`. `validateFoodInput` applies the same rule to both fields with inline English messages (e.g. `"Link must start with https://"`).
 
 ## 8. Functional requirements
 
@@ -91,11 +91,11 @@ Enforced in the existing pure helpers (`lib/foods/index.ts`) so any future serve
 
 ### 8.2 CRUD form (`FoodFormDialog`)
 
-- Two optional `Input` fields with `Label`: `Instagram (opsional)` and `TikTok (opsional)`, placeholder `https://…`.
+- Two optional `Input` fields with `Label`: `Instagram (optional)` and `TikTok (optional)`, placeholder `https://…`.
 - Prefilled on edit from the stored values; clearing a field removes the link (`undefined` after normalize).
 - Submitted through the same `FoodInput` → `validateFoodInput(input, existing, place?.id)` path; per-field inline errors under each input (`role="alert"`), following the existing name/area/tags pattern.
 - Create and edit share the rule; duplicate-name and tag/area behavior unchanged.
-- Copy stays inline Indonesian; the existing `"Tersimpan di perangkat ini."` line remains the only persistence claim.
+- Copy stays inline English; the existing `"Saved on this device."` line remains the only persistence claim.
 
 ### 8.3 Persistence behavior
 
@@ -111,7 +111,7 @@ Enforced in the existing pure helpers (`lib/foods/index.ts`) so any future serve
 
 - **Placement:** same `/foods` surface, no new route. Icon row lives inside the existing card geometry (under the area line); no card-grid or `Page`/`Sections`/`Container` changes.
 - **Form container:** the existing `FoodFormDialog` (`Dialog` primitive) — two extra rows in the current `grid gap-5` form, no new dialog or dependency.
-- **Copy:** inline Indonesian beside consuming components; no string catalog, no `t()` runtime.
+- **Copy:** inline English beside consuming components; no string catalog, no `t()` runtime.
 - **A11y:** icon links carry `aria-label` with the place name; count line and shuffle `aria-live="polite"` regions preserved; dialog focus behavior unchanged.
 - **Layout:** card-grid geometry unchanged; a linkless card is pixel-identical to v1.
 

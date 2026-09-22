@@ -125,18 +125,18 @@ export function FoodFormDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{place ? "Ubah tempat" : "Tambah tempat"}</DialogTitle>
-          <DialogDescription>Tersimpan di perangkat ini.</DialogDescription>
+          <DialogTitle>{place ? "Edit place" : "Add place"}</DialogTitle>
+          <DialogDescription>Saved on this device.</DialogDescription>
         </DialogHeader>
         <form className="grid gap-5" onSubmit={handleSubmit}>
           <div className="grid gap-2.5">
-            <Label htmlFor="food-form-name">Nama tempat</Label>
+            <Label htmlFor="food-form-name">Place name</Label>
             <Input
               aria-invalid={errors.name ? true : undefined}
               autoFocus
               id="food-form-name"
               onChange={(event) => setName(event.target.value)}
-              placeholder="Mis. Soto Cak Har"
+              placeholder="E.g. Soto Cak Har"
               value={name}
             />
             {errors.name && (
@@ -151,7 +151,7 @@ export function FoodFormDialog({
             <Select onValueChange={(value) => setArea(value ?? "")} value={area}>
               <SelectTrigger className="w-full" id="food-form-area">
                 <span className={area === "" ? "text-muted-foreground" : undefined}>
-                  {area === "" ? "Pilih area" : formatArea(area)}
+                  {area === "" ? "Select area" : formatArea(area)}
                 </span>
               </SelectTrigger>
               <SelectContent>
@@ -171,7 +171,7 @@ export function FoodFormDialog({
 
           <div className="grid gap-2.5">
             <Label htmlFor="food-form-tags">
-              Tag ({tags.length}/{MAX_TAGS_PER_PLACE})
+              Tags ({tags.length}/{MAX_TAGS_PER_PLACE})
             </Label>
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-2.5">
@@ -179,7 +179,7 @@ export function FoodFormDialog({
                   <Badge key={tag} variant="secondary">
                     {tag}
                     <button
-                      aria-label={`Hapus tag ${tag}`}
+                      aria-label={`Remove tag ${tag}`}
                       className="cursor-pointer"
                       onClick={() => removeTag(tag)}
                       type="button"
@@ -207,7 +207,7 @@ export function FoodFormDialog({
                 }}
                 onFocus={() => setTagOpen(true)}
                 onKeyDown={handleTagKeyDown}
-                placeholder="Ketik untuk cari tag, Enter untuk tambah"
+                placeholder="Type to search tags, press Enter to add"
                 role="combobox"
                 value={tagDraft}
               />
@@ -243,9 +243,9 @@ export function FoodFormDialog({
 
           <div className="flex justify-end gap-2.5">
             <Button onClick={onClose} type="button" variant="outline">
-              Batal
+              Cancel
             </Button>
-            <Button type="submit">{place ? "Simpan" : "Tambah"}</Button>
+            <Button type="submit">{place ? "Save" : "Add"}</Button>
           </div>
         </form>
       </DialogContent>

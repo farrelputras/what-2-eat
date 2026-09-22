@@ -34,7 +34,7 @@ Every module, route, and feature belongs to one owner. Place new work by owner f
 6. **Copy is inline and server-first.** Keep labels beside their consuming component; reusable content functionality goes in `lib/content/index.ts`, not a string catalog. Server Components pass primitive labels to client leaves; never pass content functions across the Server/Client boundary. Do not add a `t()` runtime or next-intl to the default storefront; in an already localized installation, preserve next-intl, aligned catalogs, and narrowly scoped `NextIntlClientProvider` boundaries.
 7. **Two outward-facing agent surfaces, two owners.** Next.js describes the storefront to outside agents through Markdown representations, `/llms.txt`, structured data, and the sitemap, built from the same domain types as the HTML pages. Shopify's own agent endpoints (`/api/mcp`, `/api/ucp/mcp`, `/.well-known/ucp`) are Shopify's; `proxy.ts` only forwards them. Do not reimplement either side in the other, and do not route Eve through the Markdown surface.
 8. **Every user-configurable `process.env.X` read has a row in `.env.example`** with a short comment on when to set it.
-9. **Generated documents are in English.** Specs, PRDs, and plans under `docs/` are written in English; quoted product UI copy stays Indonesian inline.
+9. **Generated documents are in English.** Specs, PRDs, and plans under `docs/` are written in English; quoted product UI copy stays English inline.
 
 ## Recommended project plugins
 

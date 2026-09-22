@@ -4,7 +4,7 @@
 - Status: draft, pending Farrel's review
 - Session scope: PRD only. No implementation.
 - Language: English (per request).
-- Supplements: `2026-09-22-what-2-eat-design.md` (v1 catalog spec, Indonesian). That doc deferred CRUD UI; this doc specifies it.
+- Supplements: `2026-09-22-what-2-eat-design.md` (v1 catalog spec, now in English). That doc deferred CRUD UI; this doc specifies it.
 - Note: the localStorage storage decision (§§3–5, §8.5) and the public/no-login access model are superseded by `2026-09-22-what-2-eat-firebase.md` (Firestore + login-required, global shared). This doc remains the archive of the device-local iteration.
 
 ## 1. Goal
@@ -83,17 +83,17 @@ Enforced in one pure helper (`lib/foods/index.ts`) so UI and any future server p
 
 ### 8.1 Create
 
-- Entry: `Tambah tempat` button in the catalog toolbar zone (next to shuffle/reset, not hidden behind filters).
+- Entry: `Add place` button in the catalog toolbar zone (next to shuffle/reset, not hidden behind filters).
 - Fields: **Name** (required), **Area** (required, dropdown: Surabaya / Malang / Batam), **Tags** (searchable dropdown — typing filters the existing tag catalog with Arrow/Enter/click to pick, `,` or Enter on free text adds a new tag; `Backspace` on empty input removes last chip, × removes; `n/8` counter).
 - Validation (zod, shared helper):
   - Reject empty/whitespace-only; collapse internal multi-space.
-  - Area outside the fixed list blocked with `"Pilih area"`.
-  - Duplicate-name guard: case-insensitive match against the merged dataset blocks with `"Sudah ada tempat dengan nama ini"` and points at the existing row.
+  - Area outside the fixed list blocked with `"Select an area"`.
+  - Duplicate-name guard: case-insensitive match against the merged dataset blocks with `"A place with this name already exists"` and points at the existing row.
 - Success: `sonner` toast, dialog/panel closes, new card appears, derived tag/area catalogs re-derive (new values show up immediately), focus returns to the trigger.
 
 ### 8.2 Read (no semantic change)
 
-List, search, tag multi-select (OR), area select, count line (`X dari Y tempat`, where `Y` is now merged length), empty state, shuffle-from-filtered, reset — all keep v1 semantics.
+List, search, tag multi-select (OR), area select, count line (`X of Y places`, where `Y` is now merged length), empty state, shuffle-from-filtered, reset — all keep v1 semantics.
 
 ### 8.3 Update
 
@@ -104,7 +104,7 @@ List, search, tag multi-select (OR), area select, count line (`X dari Y tempat`,
 
 ### 8.4 Delete
 
-- Per-card `Hapus` with two-step confirm (inline confirm, or `AlertDialog` only if that primitive already exists in `components/ui` — verify before use, do not invent one).
+- Per-card `Delete` with two-step confirm (inline confirm, or `AlertDialog` only if that primitive already exists in `components/ui` — verify before use, do not invent one).
 - Seed rows → tombstone; user rows → upsert removed. Filtered view, count, catalogs, and shuffle panel update immediately.
 - No undo in v1 (explicitly out of scope). UI copy must not promise one.
 
@@ -117,16 +117,16 @@ List, search, tag multi-select (OR), area select, count line (`X dari Y tempat`,
 
 ## 9. UX specification
 
-- **Placement:** CRUD stays on `/foods` — no new route. `Tambah tempat` beside shuffle/reset; `Edit`/`Hapus` as small icon buttons per card. Rationale: single-surface app, one entity, no admin role to justify `/foods/manage`. A separate route is the fallback only if card chrome gets cluttered on mobile.
+- **Placement:** CRUD stays on `/foods` — no new route. `Add place` beside shuffle/reset; `Edit`/`Delete` as small icon buttons per card. Rationale: single-surface app, one entity, no admin role to justify `/foods/manage`. A separate route is the fallback only if card chrome gets cluttered on mobile.
 - **Form container:** modal dialog on desktop / bottom sheet on mobile — but only if those primitives already exist in `components/ui`. Otherwise an anchored inline expanding panel above the grid. No new dialog dependency for this iteration.
-- **Copy:** inline Indonesian beside consuming components (repo rule); no string catalog, no `t()` runtime. Must include one honest persistence line ("Tersimpan di perangkat ini") near the add button or empty state.
-- **A11y:** dialog traps focus and returns it on close; destructive buttons use `aria-label="Hapus {name}"`; count line and shuffle result keep `aria-live="polite"` (already present — preserve).
+- **Copy:** inline English beside consuming components (repo rule); no string catalog, no `t()` runtime. Must include one honest persistence line ("Saved on this device.") near the add button or empty state.
+- **A11y:** dialog traps focus and returns it on close; destructive buttons use `aria-label="Delete {name}"`; count line and shuffle result keep `aria-live="polite"` (already present — preserve).
 - **Layout:** `Page` + `Sections` + `Container` contract unchanged; card-grid geometry unchanged; the form is the only new visual block. `components/ui/` boundary keeps primitive props only.
 
 ## 10. Edge cases (acceptance-relevant)
 
 1. Duplicate name in any casing/whitespace variant → blocked on create; blocked on edit except self.
-2. Zero tags → blocked (`minimal 1 tag`).
+2. Zero tags → blocked (`Add at least 1 tag`).
 3. All-whitespace name/area/tag → treated as empty → blocked.
 4. Area is fixed to Surabaya / Malang / Batam — no new areas can be introduced; deleting the last place of an area just empties that filter option (derived catalogs still drive the filter).
 5. Delete-then-re-add same name → allowed with a fresh id.

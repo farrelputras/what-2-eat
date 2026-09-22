@@ -82,7 +82,7 @@ export function useFoods(seedFoods: FoodPlace[]): UseFoodsResult {
 
   useEffect(() => {
     const { corrupted, overrides: stored } = loadFoodOverrides();
-    if (corrupted) toast.warning("Data simpanan rusak — menampilkan katalog bawaan.");
+    if (corrupted) toast.warning("Saved data is corrupted — showing the built-in catalog.");
     setOverrides(stored);
     setMounted(true);
   }, []);
@@ -94,7 +94,7 @@ export function useFoods(seedFoods: FoodPlace[]): UseFoodsResult {
     setOverrides(next);
     if (!saveFoodOverrides(next)) {
       setPersistent(false);
-      toast.error("Gagal menyimpan — perubahan hanya berlaku sesi ini.");
+      toast.error("Failed to save — changes apply to this session only.");
     }
   }, []);
 

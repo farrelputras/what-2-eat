@@ -3,7 +3,7 @@
 - Date: 2026-09-22
 - Status: draft locked (ready for implementation)
 - Session scope: PRD only. No implementation.
-- Language: English (matches sibling specs; UI copy stays inline Indonesian per repo rule).
+- Language: English (matches sibling specs; UI copy stays inline English per repo rule).
 - Supplements: `2026-09-22-what-2-eat-design.md` (v1 catalog) and `2026-09-22-what-2-eat-crud.md` (device-local CRUD). This doc supersedes the CRUD spec's storage decision (localStorage → Firestore) and its public/no-login access model (→ login-required, global shared). Firebase env and init are done together in the coding session.
 
 ## 1. Background
@@ -33,7 +33,7 @@ Goals:
 - G2: Global catalog CRUD persisted in Firestore.
 - G3: 2 logged-in users see each other's changes in < 2 seconds without refresh.
 - G4: Remove the entire `localStorage` path (code, types, key).
-- G5: Catalog UX unchanged (search, tag/area filter, shuffle, add/edit dialog, two-click delete confirm, Indonesian toasts).
+- G5: Catalog UX unchanged (search, tag/area filter, shuffle, add/edit dialog, two-click delete confirm, English toasts).
 
 Non-goals (v1):
 
@@ -55,11 +55,11 @@ Non-goals (v1):
 
 ### FR-1: Auth
 
-- FR-1.1: `/login` contains a single "Masuk dengan Google" button.
+- FR-1.1: `/login` contains a single "Sign in with Google" button.
 - FR-1.2: Successful login creates an HttpOnly session cookie (`__session`), not just
   in-memory state, so refresh does not log out.
 - FR-1.3: Logout clears the session cookie; accessing `/foods` after logout redirects to `/login`.
-- FR-1.4: Failed login shows an Indonesian error toast, no half-way redirect.
+- FR-1.4: Failed login shows an English error toast, no half-way redirect.
 - FR-1.5: Nav shows login state (name/avatar + sign-out button when logged in).
 
 ### FR-2: Read gate
@@ -75,7 +75,7 @@ Non-goals (v1):
 - FR-3.1: Add/edit/delete are only reachable when logged in (the gate guarantees this,
   so buttons need no anonymous state).
 - FR-3.2: Client validation reuses existing functions: `validateFoodInput`, `normalize*`,
-  existing Indonesian error messages ("Nama tempat wajib diisi", "Maksimal 8 tag", etc.)
+  existing English error messages ("Place name is required", "Maximum 8 tags", etc.)
   plus the duplicate-name check.
 - FR-3.3: Writes go through the Firebase Client SDK directly to `food_places` (not Server Actions),
   so `onSnapshot` propagates changes to both users without refresh.
@@ -182,8 +182,8 @@ No display PII: `createdByUid` is console forensics only.
 - Authenticated: catalog layout identical to today; other-user updates appear
   automatically; `aria-live` on count and shuffle result kept.
 - Nav: login/logout state; logging out from `/foods` → `/login`.
-- Success/failure toasts stay Indonesian as today
-  ("Tempat ditambahkan.", "Perubahan disimpan.", "Tempat dihapus.").
+- Success/failure toasts stay English as today
+  ("Place added.", "Changes saved.", "Place removed.").
 
 ## 9. Environment (filled together in the coding session)
 
@@ -212,7 +212,7 @@ distinguished in `lib/firebase/admin.ts`.
 - [ ] Google login → lands on `/foods`, refresh stays logged in, HttpOnly `__session` cookie present.
 - [ ] Logout → opening `/foods` redirects to `/login` again.
 - [ ] 2 browsers (different accounts) add/edit/delete in turns → other side updates < 2 seconds without refresh, counts consistent.
-- [ ] Duplicate name, empty name, > 8 tags rejected with the existing Indonesian messages.
+- [ ] Duplicate name, empty name, > 8 tags rejected with the existing English messages.
 - [ ] Anonymous direct Firestore reads/writes rejected by Rules.
 - [ ] Cards never display `createdBy` in any form.
 - [ ] `grep FOOD_OVERRIDES_STORAGE_KEY` returns zero hits.
