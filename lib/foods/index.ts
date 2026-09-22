@@ -28,8 +28,10 @@ export const EMPTY_FOOD_FILTERS: FoodFilters = {
 
 export const MAX_TAGS_PER_PLACE = 8;
 
+export const FOOD_AREAS = ["batam", "malang", "surabaya"] as const;
+
 const foodInputSchema = z.object({
-  area: z.string().min(1).max(40),
+  area: z.enum(FOOD_AREAS),
   name: z.string().min(1).max(80),
   tags: z.string().min(1).max(24).array().min(1).max(8),
 });
@@ -78,7 +80,7 @@ export function validateFoodInput(
         errors.name =
           issue.code === "too_big" ? "Nama maksimal 80 karakter" : "Nama tempat wajib diisi";
       } else if (field === "area" && !errors.area) {
-        errors.area = issue.code === "too_big" ? "Area maksimal 40 karakter" : "Area wajib diisi";
+        errors.area = "Pilih area";
       } else if (field === "tags" && !errors.tags) {
         errors.tags =
           issue.code === "too_big"

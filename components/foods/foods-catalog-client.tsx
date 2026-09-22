@@ -299,13 +299,13 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
 
       {form && (
         <FoodFormDialog
-          areas={catalogAreas}
           existing={catalogFoods}
           key={form.place?.id ?? "new"}
           onClose={closeForm}
           onSubmit={handleFormSubmit}
           open
           place={form.place}
+          tagSuggestions={catalogTags}
         />
       )}
     </div>

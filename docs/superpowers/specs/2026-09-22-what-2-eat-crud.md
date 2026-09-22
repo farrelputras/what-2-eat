@@ -28,11 +28,11 @@ Success criteria:
 
 ## 3. Locked decisions (from review session)
 
-| Decision | Choice | Why |
-|---|---|---|
-| Storage | localStorage first | Zero backend, fastest iteration; accepted trade-off is per-device persistence. |
-| Access | Public, no login | Acceptable because damage is confined to the visitor's own browser. Must be revisited the moment storage moves server-side. |
-| Scope | Single `FoodPlace` entity (tags/area are fields on the place form) | No separate masters; tags/areas stay free-form fields with the filter catalog *derived* from the merged dataset, as today. |
+| Decision | Choice                                                             | Why                                                                                                                         |
+| -------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Storage  | localStorage first                                                 | Zero backend, fastest iteration; accepted trade-off is per-device persistence.                                              |
+| Access   | Public, no login                                                   | Acceptable because damage is confined to the visitor's own browser. Must be revisited the moment storage moves server-side. |
+| Scope    | Single `FoodPlace` entity (tags/area are fields on the place form) | No separate masters; tags/areas stay free-form fields with the filter catalog _derived_ from the merged dataset, as today.  |
 
 ## 4. Current-state facts (verified in tree)
 
@@ -45,7 +45,7 @@ Success criteria:
 
 ## 5. Critique — why this shape, and what it costs
 
-1. **localStorage means "my list", not "the list".** Two browsers (or phone vs. laptop) diverge immediately. The spec therefore frames CRUD as *personal overrides layered on seed data*, never as edits to shared truth. UI copy must say so honestly ("saved on this device"), or "my place disappeared" reports are guaranteed on device switches, cleared site data, and redeploys.
+1. **localStorage means "my list", not "the list".** Two browsers (or phone vs. laptop) diverge immediately. The spec therefore frames CRUD as _personal overrides layered on seed data_, never as edits to shared truth. UI copy must say so honestly ("saved on this device"), or "my place disappeared" reports are guaranteed on device switches, cleared site data, and redeploys.
 2. **Public + no-auth is safe only because storage is local.** There is no vandalism vector beyond the vandal's own browser. This decision expires the day a server store is introduced — the DB migration must add an access model at the same time, not later.
 3. **No master-data CRUD is the right call at this scale.** With 17 rows and one area, tag/area masters would add rename-propagation and orphan-cleanup burden for no payoff. Free-form fields + derived catalogs cover "new tag" and "new area" with zero extra screens.
 4. **Normalization debt already exists and CRUD multiplies it.** Seed tags are Title Case (`"Japanese"`, `"Fast Food"`), areas are lowercase (`"surabaya"`); `filterFoods` compares tags case-sensitively but areas case-insensitively. Without enforced rules the form will fork `Soto` / `soto` / `SOTO` into three filter identities. Section 7 makes the rules load-bearing.
@@ -59,7 +59,7 @@ Success criteria:
 type FoodOverridesV1 = {
   version: 1;
   upserts: Record<string, FoodPlace>; // user-created + user-edited rows, keyed by id
-  deletedSeedIds: string[];           // tombstones hiding seed rows
+  deletedSeedIds: string[]; // tombstones hiding seed rows
 };
 ```
 
@@ -72,20 +72,21 @@ type FoodOverridesV1 = {
 
 Enforced in one pure helper (`lib/foods/index.ts`) so UI and any future server path share them:
 
-| Field | Rule |
-|---|---|
-| `name` | `trim` + collapse `\s+` to single space. Compared case-insensitively everywhere; displayed as typed. Length 1–80 after trim. |
-| `area` | Stored lowercased + trimmed (`surabaya`); displayed Title-cased via existing `formatArea`. Comparison stays lowercase (matches current `filterFoods`). Length 1–40 after trim. |
-| `tags` | Each trimmed, empties dropped, deduped case-insensitively, cap 8 per place, first-seen casing preserved for display. Each 1–24 chars. At least 1 required. |
+| Field  | Rule                                                                                                                                                                                       |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name` | `trim` + collapse `\s+` to single space. Compared case-insensitively everywhere; displayed as typed. Length 1–80 after trim.                                                               |
+| `area` | Must be one of `FOOD_AREAS` (`batam`, `malang`, `surabaya`, `lib/foods/index.ts`); form is a dropdown, never free text. Stored lowercase; displayed Title-cased via existing `formatArea`. |
+| `tags` | Each trimmed, empties dropped, deduped case-insensitively, cap 8 per place, first-seen casing preserved for display. Each 1–24 chars. At least 1 required.                                 |
 
 ## 8. Functional requirements
 
 ### 8.1 Create
 
 - Entry: `Tambah tempat` button in the catalog toolbar zone (next to shuffle/reset, not hidden behind filters).
-- Fields: **Name** (required), **Area** (required, free text with `datalist` suggestions from the derived area catalog), **Tags** (chip input — `Enter`/`,` commits, `Backspace` on empty input removes last chip, × removes; `n/8` counter).
+- Fields: **Name** (required), **Area** (required, dropdown: Surabaya / Malang / Batam), **Tags** (searchable dropdown — typing filters the existing tag catalog with Arrow/Enter/click to pick, `,` or Enter on free text adds a new tag; `Backspace` on empty input removes last chip, × removes; `n/8` counter).
 - Validation (zod, shared helper):
   - Reject empty/whitespace-only; collapse internal multi-space.
+  - Area outside the fixed list blocked with `"Pilih area"`.
   - Duplicate-name guard: case-insensitive match against the merged dataset blocks with `"Sudah ada tempat dengan nama ini"` and points at the existing row.
 - Success: `sonner` toast, dialog/panel closes, new card appears, derived tag/area catalogs re-derive (new values show up immediately), focus returns to the trigger.
 
@@ -126,7 +127,7 @@ List, search, tag multi-select (OR), area select, count line (`X dari Y tempat`,
 1. Duplicate name in any casing/whitespace variant → blocked on create; blocked on edit except self.
 2. Zero tags → blocked (`minimal 1 tag`).
 3. All-whitespace name/area/tag → treated as empty → blocked.
-4. New area typed → appears in Area select at once; deleting its last place removes it.
+4. Area is fixed to Surabaya / Malang / Batam — no new areas can be introduced; deleting the last place of an area just empties that filter option (derived catalogs still drive the filter).
 5. Delete-then-re-add same name → allowed with a fresh id.
 6. Edit while the row is filtered out → allowed; count updates; no phantom row.
 7. Shuffle result deleted/edited → panel updates or clears, announced via `aria-live`.
@@ -157,13 +158,13 @@ List, search, tag multi-select (OR), area select, count line (`X dari Y tempat`,
 
 ## 13. Risks and mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Users expect shared truth ("I added it, my friend can't see it") | Honest device-local copy in the UI; DB migration is the documented next step. |
-| Hydration flash on count/grid | Post-mount merge + reserved geometry; user rows never server-rendered. |
-| Tag/area explosion via typos | Datalist suggestions + dup-guard + 8-tag cap; masters deferred deliberately. |
-| Missing dialog/sheet primitive | Inline panel fallback; no new dependency in v1. |
-| Public CRUD abuse | Harmless by construction (local-only damage); access model arrives with any server store. |
+| Risk                                                             | Mitigation                                                                                |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Users expect shared truth ("I added it, my friend can't see it") | Honest device-local copy in the UI; DB migration is the documented next step.             |
+| Hydration flash on count/grid                                    | Post-mount merge + reserved geometry; user rows never server-rendered.                    |
+| Tag/area explosion via typos                                     | Datalist suggestions + dup-guard + 8-tag cap; masters deferred deliberately.              |
+| Missing dialog/sheet primitive                                   | Inline panel fallback; no new dependency in v1.                                           |
+| Public CRUD abuse                                                | Harmless by construction (local-only damage); access model arrives with any server store. |
 
 ## 14. Step → verification (implementation session)
 

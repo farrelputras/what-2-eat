@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import {
+  FOOD_AREAS,
   MAX_TAGS_PER_PLACE,
   validateFoodInput,
   type FoodInput,
@@ -22,45 +24,87 @@ import {
 import type { FoodPlace } from "@/lib/foods/types";
 
 interface FoodFormDialogProps {
-  areas: string[];
   existing: FoodPlace[];
   onClose: () => void;
   onSubmit: (input: FoodInput) => void;
   open: boolean;
   place: FoodPlace | null;
+  tagSuggestions: string[];
 }
 
+function formatArea(area: string): string {
+  return area.charAt(0).toUpperCase() + area.slice(1);
+}
+
+const TAG_LIST_ID = "food-form-tag-list";
+
 export function FoodFormDialog({
-  areas,
   existing,
   onClose,
   onSubmit,
   open,
   place,
+  tagSuggestions,
 }: FoodFormDialogProps) {
   const [name, setName] = useState(place?.name ?? "");
   const [area, setArea] = useState(place?.area ?? "");
   const [tags, setTags] = useState<string[]>(place?.tags ?? []);
   const [tagDraft, setTagDraft] = useState("");
+  const [tagOpen, setTagOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [errors, setErrors] = useState<FoodInputErrors>({});
 
-  function addDraftTags(value: string): void {
-    const fresh = value
-      .split(",")
+  const matches =
+    tags.length >= MAX_TAGS_PER_PLACE
+      ? []
+      : tagSuggestions
+          .filter(
+            (suggestion) => !tags.some((item) => item.toLowerCase() === suggestion.toLowerCase()),
+          )
+          .filter((suggestion) => suggestion.toLowerCase().includes(tagDraft.trim().toLowerCase()))
+          .slice(0, 6);
+  const listOpen = tagOpen && matches.length > 0;
+
+  function addTags(values: string[]): void {
+    const fresh = values
       .map((tag) => tag.trim())
       .filter(
         (tag) => tag !== "" && !tags.some((item) => item.toLowerCase() === tag.toLowerCase()),
       );
-    if (fresh.length === 0) {
-      setTagDraft("");
-      return;
-    }
-    setTags((prev) => [...prev, ...fresh].slice(0, MAX_TAGS_PER_PLACE));
+    if (fresh.length > 0) setTags((prev) => [...prev, ...fresh].slice(0, MAX_TAGS_PER_PLACE));
     setTagDraft("");
+    setTagOpen(false);
+    setActiveIndex(-1);
   }
 
   function removeTag(tag: string): void {
     setTags((prev) => prev.filter((item) => item !== tag));
+  }
+
+  function handleTagKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key === "ArrowDown" && matches.length > 0) {
+      event.preventDefault();
+      setTagOpen(true);
+      setActiveIndex((prev) => (prev + 1) % matches.length);
+    } else if (event.key === "ArrowUp" && matches.length > 0) {
+      event.preventDefault();
+      setActiveIndex((prev) => (prev - 1 + matches.length) % matches.length);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (listOpen && activeIndex >= 0 && matches[activeIndex]) {
+        addTags([matches[activeIndex] as string]);
+      } else {
+        addTags(splitDraft(tagDraft));
+      }
+    } else if (event.key === ",") {
+      event.preventDefault();
+      addTags(splitDraft(tagDraft));
+    } else if (event.key === "Escape") {
+      setTagOpen(false);
+      setActiveIndex(-1);
+    } else if (event.key === "Backspace" && tagDraft === "" && tags.length > 0) {
+      removeTag(tags[tags.length - 1] as string);
+    }
   }
 
   function handleSubmit(event: FormEvent): void {
@@ -104,19 +148,20 @@ export function FoodFormDialog({
 
           <div className="grid gap-2.5">
             <Label htmlFor="food-form-area">Area</Label>
-            <Input
-              aria-invalid={errors.area ? true : undefined}
-              id="food-form-area"
-              list="food-form-area-suggestions"
-              onChange={(event) => setArea(event.target.value)}
-              placeholder="Mis. surabaya"
-              value={area}
-            />
-            <datalist id="food-form-area-suggestions">
-              {areas.map((item) => (
-                <option key={item} value={item} />
-              ))}
-            </datalist>
+            <Select onValueChange={(value) => setArea(value ?? "")} value={area}>
+              <SelectTrigger className="w-full" id="food-form-area">
+                <span className={area === "" ? "text-muted-foreground" : undefined}>
+                  {area === "" ? "Pilih area" : formatArea(area)}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {FOOD_AREAS.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {formatArea(item)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {errors.area && (
               <p className="text-sm text-destructive" role="alert">
                 {errors.area}
@@ -145,21 +190,50 @@ export function FoodFormDialog({
                 ))}
               </div>
             )}
-            <Input
-              aria-invalid={errors.tags ? true : undefined}
-              id="food-form-tags"
-              onChange={(event) => setTagDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === ",") {
-                  event.preventDefault();
-                  addDraftTags(tagDraft);
-                } else if (event.key === "Backspace" && tagDraft === "" && tags.length > 0) {
-                  removeTag(tags[tags.length - 1] as string);
+            <div className="relative">
+              <Input
+                aria-activedescendant={
+                  listOpen && activeIndex >= 0 ? `food-form-tag-option-${activeIndex}` : undefined
                 }
-              }}
-              placeholder="Ketik tag lalu Enter atau koma"
-              value={tagDraft}
-            />
+                aria-controls={TAG_LIST_ID}
+                aria-expanded={listOpen}
+                aria-invalid={errors.tags ? true : undefined}
+                id="food-form-tags"
+                onBlur={() => setTagOpen(false)}
+                onChange={(event) => {
+                  setTagDraft(event.target.value);
+                  setTagOpen(true);
+                  setActiveIndex(-1);
+                }}
+                onFocus={() => setTagOpen(true)}
+                onKeyDown={handleTagKeyDown}
+                placeholder="Ketik untuk cari tag, Enter untuk tambah"
+                role="combobox"
+                value={tagDraft}
+              />
+              {listOpen && (
+                <div
+                  className="bg-popover absolute z-10 mt-1 w-full rounded-md border p-1 shadow-md"
+                  id={TAG_LIST_ID}
+                  role="listbox"
+                >
+                  {matches.map((suggestion, index) => (
+                    <button
+                      aria-selected={index === activeIndex}
+                      className={`flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-sm outline-hidden select-none ${index === activeIndex ? "bg-accent text-accent-foreground" : ""}`}
+                      id={`food-form-tag-option-${index}`}
+                      key={suggestion}
+                      onClick={() => addTags([suggestion])}
+                      onMouseDown={(event) => event.preventDefault()}
+                      role="option"
+                      type="button"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {errors.tags && (
               <p className="text-sm text-destructive" role="alert">
                 {errors.tags}
