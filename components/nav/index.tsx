@@ -15,25 +15,25 @@ import { QuickLinks } from "./quick-links";
 import { SearchModal } from "./search-modal";
 
 export function Nav() {
-  const items: MenuItem[] = [
-    { id: "default-nav-foods", title: "Katalog", url: "/foods", type: "HTTP", items: [] },
-  ];
+  // Single-catalog phase: Katalog hidden; restore by re-adding the entry.
+  const items: MenuItem[] = [];
   return (
     <nav
       className="sticky top-0 z-30 w-full bg-background pt-[env(safe-area-inset-top,0px)] transition-shadow duration-250"
       id="nav-outer"
     >
       <Container className="flex h-16 items-center gap-2.5 md:gap-5">
-        <MobileMenu items={items} />
+        {items.length > 0 && <MobileMenu items={items} />}
 
         <Link className="flex items-center shrink-0" href="/">
           <span className="text-xl leading-4">{shopConfig.site.name}</span>
         </Link>
 
-        <QuickLinks items={items} />
+        {items.length > 0 && <QuickLinks items={items} />}
 
         <div className="flex items-center gap-5 ml-auto">
-          {shopConfig.search.isEnabled && (
+          {/* Search hidden for the single-catalog phase; restore by uncommenting. */}
+          {/* {shopConfig.search.isEnabled && (
             <PredictiveSearchProvider
               debounceInMs={300}
               limit={3}
@@ -41,16 +41,17 @@ export function Nav() {
             >
               <SearchModal />
             </PredictiveSearchProvider>
-          )}
+          )} */}
           {shopConfig.auth.isEnabled && (
             <Suspense fallback={<NavAccountFallback />}>
               <NavAccount />
             </Suspense>
           )}
           <AuthStateClient bypass={isAuthBypassEnabled()} />
-          <Suspense fallback={<CartIconFallback />}>
+          {/* Cart hidden for the single-catalog phase; restore by uncommenting. */}
+          {/* <Suspense fallback={<CartIconFallback />}>
             <CartIcon />
-          </Suspense>
+          </Suspense> */}
         </div>
       </Container>
     </nav>

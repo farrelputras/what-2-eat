@@ -24,7 +24,7 @@ export async function Footer() {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
             <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 sm:justify-start">
               <p className="text-sm text-muted-foreground leading-5">
-                {`© ${shopConfig.site.name}. All rights reserved.`}
+                © Made with Love for Farrel & Vania ❤️
               </p>
               {policies.map((policy) => (
                 <Link

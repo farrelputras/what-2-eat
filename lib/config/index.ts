@@ -63,7 +63,7 @@ export const shopConfig = {
     isEnabled: true,
   },
   site: {
-    name: "Vercel Shop",
+    name: "W2E",
     url: defaultUrl,
   },
 } satisfies ShopConfig;
