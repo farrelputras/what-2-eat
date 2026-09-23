@@ -51,5 +51,13 @@
   },
   "engines": {
     "node": "24"
+  },
+  "overrides": {
+    "jose": "5.10.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "jose": "5.10.0"
+    }
   }
 }
