@@ -1,8 +1,8 @@
 # What-2-Eat — Auth Bypass for Testing (PRD)
 
 - Date: 2026-09-23
-- Status: proposed (PRD only, no implementation).
-- Session scope: PRD only. No code changes in this session.
+- Status: implemented 2026-09-23 (commit `72a7d9a`); see §10.
+- Session scope: PRD only (2026-09-23 session). Implemented 2026-09-23; see §10.
 - Language: English (matches sibling specs; UI copy stays inline English per repo rule).
 - Supplements: `2026-09-22-what-2-eat-firebase.md` (auth + Firestore baseline). This doc does not change the production auth model; it adds a dev-only test path.
 - Locked decisions (from review): full fake user, Firebase emulators for data, hard-fail build guard in production/preview.
@@ -127,3 +127,11 @@ Flag-gated, default off. No migration, no rules deploy, no Shopify impact. Docs 
 - Exact emulator ports and client emulator env var names.
 - Whether `/login` auto-redirects or shows an explicit `Continue as test user` button (PRD recommends auto-redirect for speed; implementation may choose the button if auto-redirect is deemed too magical).
 - Whether the client learns bypass state via prop drilling from the server gate or a small read-only status route (constraint: no `NEXT_PUBLIC_` flag).
+
+## 10. Implementation record (2026-09-23)
+
+- Commit `72a7d9a`. All §9 items resolved: emulator ports auth `9099` / firestore `8080` (`firebase.json`); client vars `NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST` / `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST`; `/login` auto-redirects to `/foods`; client learns bypass via `bypass` prop drilled from server gates.
+- Prod guard enforced twice: build-time throw in `next.config.ts` plus runtime `assertBypassAllowed()` in `instrumentation.ts:register()`.
+- Emulator-down state is explicit: `fetchFoodPlacesInitial` throws a start-the-emulator message; client `subscribeFoodPlaces` surfaces errors via toast, never a silent empty list.
+- Minor tail: `LoginButtonClient` accepts `bypass` but `LoginGate` redirects before rendering it, so the prop is currently unreachable — harmless, kept for symmetry with `LogoutButtonClient`.
+- Verified at implementation time per §7 V1–V5; re-verify V2–V4 in a real browser with emulators up before relying on this loop.
