@@ -48,6 +48,8 @@ export function FoodFormDialog({
 }: FoodFormDialogProps) {
   const [name, setName] = useState(place?.name ?? "");
   const [area, setArea] = useState(place?.area ?? "");
+  const [instagramUrl, setInstagramUrl] = useState(place?.instagramUrl ?? "");
+  const [tiktokUrl, setTiktokUrl] = useState(place?.tiktokUrl ?? "");
   const [tags, setTags] = useState<string[]>(place?.tags ?? []);
   const [tagDraft, setTagDraft] = useState("");
   const [tagOpen, setTagOpen] = useState(false);
@@ -109,10 +111,16 @@ export function FoodFormDialog({
 
   function handleSubmit(event: FormEvent): void {
     event.preventDefault();
-    const input: FoodInput = { area, name, tags: [...tags, ...splitDraft(tagDraft)] };
+    const input: FoodInput = {
+      area,
+      instagramUrl,
+      name,
+      tags: [...tags, ...splitDraft(tagDraft)],
+      tiktokUrl,
+    };
     const next = validateFoodInput(input, existing, place?.id);
     setErrors(next);
-    if (next.area ?? next.name ?? next.tags) return;
+    if (next.area ?? next.instagramUrl ?? next.name ?? next.tags ?? next.tiktokUrl) return;
     onSubmit(input);
   }
 
@@ -237,6 +245,40 @@ export function FoodFormDialog({
             {errors.tags && (
               <p className="text-sm text-destructive" role="alert">
                 {errors.tags}
+              </p>
+            )}
+          </div>
+
+          <div className="grid gap-2.5">
+            <Label htmlFor="food-form-instagram">Instagram (optional)</Label>
+            <Input
+              aria-invalid={errors.instagramUrl ? true : undefined}
+              id="food-form-instagram"
+              inputMode="url"
+              onChange={(event) => setInstagramUrl(event.target.value)}
+              placeholder="https://…"
+              value={instagramUrl}
+            />
+            {errors.instagramUrl && (
+              <p className="text-sm text-destructive" role="alert">
+                {errors.instagramUrl}
+              </p>
+            )}
+          </div>
+
+          <div className="grid gap-2.5">
+            <Label htmlFor="food-form-tiktok">TikTok (optional)</Label>
+            <Input
+              aria-invalid={errors.tiktokUrl ? true : undefined}
+              id="food-form-tiktok"
+              inputMode="url"
+              onChange={(event) => setTiktokUrl(event.target.value)}
+              placeholder="https://…"
+              value={tiktokUrl}
+            />
+            {errors.tiktokUrl && (
+              <p className="text-sm text-destructive" role="alert">
+                {errors.tiktokUrl}
               </p>
             )}
           </div>

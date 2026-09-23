@@ -12,6 +12,7 @@ import {
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getFirestore,
   onSnapshot,
@@ -25,6 +26,7 @@ import {
   normalizeFoodArea,
   normalizeFoodName,
   normalizeFoodTags,
+  normalizeFoodUrl,
   slugFoodId,
   type FoodInput,
 } from "@/lib/foods";
@@ -112,12 +114,28 @@ export async function signOutUser(): Promise<void> {
   await fetch("/api/auth/session", { method: "DELETE" }).catch(() => {});
 }
 
+function toOptionalUrl(data: Record<string, unknown>, key: string): string | undefined {
+  const value = data[key];
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
 function toFoodPlace(id: string, data: Record<string, unknown>): FoodPlace | null {
   if (typeof data["name"] !== "string") return null;
   if (typeof data["area"] !== "string") return null;
   if (!Array.isArray(data["tags"])) return null;
   const tags = data["tags"].filter((tag): tag is string => typeof tag === "string");
-  return { area: data["area"], id, name: data["name"], tags };
+  const instagramUrl = toOptionalUrl(data, "instagramUrl");
+  const tiktokUrl = toOptionalUrl(data, "tiktokUrl");
+  return {
+    area: data["area"],
+    id,
+    ...(instagramUrl ? { instagramUrl } : {}),
+    name: data["name"],
+    tags,
+    ...(tiktokUrl ? { tiktokUrl } : {}),
+  };
 }
 
 export function subscribeFoodPlaces(
@@ -147,18 +165,24 @@ export function subscribeFoodPlaces(
 export async function createPlace(input: FoodInput, uid: string): Promise<FoodPlace> {
   const db = getFirebaseDb();
   if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
+  const instagramUrl = normalizeFoodUrl(input.instagramUrl);
+  const tiktokUrl = normalizeFoodUrl(input.tiktokUrl);
   const place: FoodPlace = {
     area: normalizeFoodArea(input.area),
     id: slugFoodId(normalizeFoodName(input.name)),
+    ...(instagramUrl ? { instagramUrl } : {}),
     name: normalizeFoodName(input.name),
     tags: normalizeFoodTags(input.tags),
+    ...(tiktokUrl ? { tiktokUrl } : {}),
   };
   await setDoc(doc(db, FOOD_PLACES_COLLECTION, place.id), {
     area: place.area,
+    ...(instagramUrl ? { instagramUrl } : {}),
     createdAt: serverTimestamp(),
     createdByUid: uid,
     name: place.name,
     tags: place.tags,
+    ...(tiktokUrl ? { tiktokUrl } : {}),
     updatedAt: serverTimestamp(),
   });
   return place;
@@ -169,8 +193,10 @@ export async function updatePlace(id: string, input: FoodInput): Promise<void> {
   if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
   await updateDoc(doc(db, FOOD_PLACES_COLLECTION, id), {
     area: normalizeFoodArea(input.area),
+    instagramUrl: normalizeFoodUrl(input.instagramUrl) ?? deleteField(),
     name: normalizeFoodName(input.name),
     tags: normalizeFoodTags(input.tags),
+    tiktokUrl: normalizeFoodUrl(input.tiktokUrl) ?? deleteField(),
     updatedAt: serverTimestamp(),
   });
 }

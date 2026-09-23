@@ -1,8 +1,8 @@
 # What-2-Eat — Instagram & TikTok Links per Place (PRD)
 
 - Date: 2026-09-22
-- Status: draft, pending Farrel's review
-- Session scope: PRD only. No implementation.
+- Status: implemented 2026-09-23; seed-URL backfill pending (see §15)
+- Session scope: PRD only (2026-09-22 session). Implemented 2026-09-23; see §15.
 - Language: English (matches sibling specs).
 - Supplements: `2026-09-22-what-2-eat-design.md` (v1 catalog) and `2026-09-22-what-2-eat-crud.md` (device-local CRUD). This doc adds optional social links on top of both; it changes no catalog or CRUD semantics.
 
@@ -165,3 +165,11 @@ Enforced in the existing pure helpers (`lib/foods/index.ts`) so any future serve
 2. Icon leaf + card/shuffle wiring (seed examples from Farrel) → 0/1/2-link visual check in a real browser, new-tab + `aria-label` check.
 3. Form fields + `client.ts` carry-through → full §11 checklist end-to-end on `/foods`, including reload persistence and pre-feature storage compatibility.
 4. `pnpm lint` + `pnpm format --check` + `pnpm typecheck` → green before close.
+
+## 15. Implementation record (2026-09-23)
+
+- Built on the Firestore architecture (`lib/firebase/*`), which superseded the localStorage design this PRD assumed (`useFoods`, `FoodOverridesV1` — same supersession as the CRUD spec). No storage versioning exists, so old Firestore docs read as linkless via trim-tolerant `toFoodPlace` on both client and server readers.
+- Shared icon home is `components/social-brand-icons.tsx` (neutral, primitive props) instead of the foods leaf, so the footer does not depend on the foods domain. No SVG path is duplicated.
+- `updatePlace` clears links with Firestore `deleteField()`; `createPlace` omits absent links (no `undefined` writes).
+- Seed backfill pending: Farrel supplied two real URLs on 2026-09-23 without a place mapping, so `lib/foods/data/foods.json` is untouched; `scripts/seed-foods.ts` only carries and validates optional links.
+- Verified: `tsc --noEmit` pass (after repairing a corrupt `@typescript/typescript-win32-x64` install — `tsc.exe` was missing, relinked offline from the pnpm store; node_modules only, no manifest change), `oxlint` pass, `oxfmt --check` pass on all touched files. Open: real-browser end-to-end (new-tab opens, screen-reader names, reload persistence, pre-feature docs in live Firestore).

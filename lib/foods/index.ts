@@ -10,14 +10,18 @@ export interface FoodFilters {
 
 export interface FoodInput {
   area: string;
+  instagramUrl?: string;
   name: string;
   tags: string[];
+  tiktokUrl?: string;
 }
 
 export interface FoodInputErrors {
   area?: string;
+  instagramUrl?: string;
   name?: string;
   tags?: string;
+  tiktokUrl?: string;
 }
 
 export const EMPTY_FOOD_FILTERS: FoodFilters = {
@@ -28,12 +32,16 @@ export const EMPTY_FOOD_FILTERS: FoodFilters = {
 
 export const MAX_TAGS_PER_PLACE = 8;
 
+export const MAX_FOOD_URL_LENGTH = 300;
+
 export const FOOD_AREAS = ["batam", "malang", "surabaya"] as const;
 
 const foodInputSchema = z.object({
   area: z.enum(FOOD_AREAS),
+  instagramUrl: z.string().max(MAX_FOOD_URL_LENGTH).optional(),
   name: z.string().min(1).max(80),
   tags: z.string().min(1).max(24).array().min(1).max(8),
+  tiktokUrl: z.string().max(MAX_FOOD_URL_LENGTH).optional(),
 });
 
 export function normalizeSearch(value: string): string {
@@ -61,6 +69,21 @@ export function normalizeFoodTags(values: string[]): string[] {
   return tags;
 }
 
+// Trim only; empty after trim means "no link". Domain-locking can tighten here later.
+export function normalizeFoodUrl(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function validateFoodInput(
   input: FoodInput,
   existing: FoodPlace[],
@@ -68,8 +91,10 @@ export function validateFoodInput(
 ): FoodInputErrors {
   const normalized: FoodInput = {
     area: normalizeFoodArea(input.area),
+    instagramUrl: normalizeFoodUrl(input.instagramUrl),
     name: normalizeFoodName(input.name),
     tags: normalizeFoodTags(input.tags),
+    tiktokUrl: normalizeFoodUrl(input.tiktokUrl),
   };
   const parsed = foodInputSchema.safeParse(normalized);
   const errors: FoodInputErrors = {};
@@ -90,8 +115,18 @@ export function validateFoodInput(
               ? "Each tag must be at most 24 characters"
               : "Maximum 8 tags"
             : "Add at least 1 tag";
+      } else if (field === "instagramUrl" && !errors.instagramUrl) {
+        errors.instagramUrl = `Link must be at most ${MAX_FOOD_URL_LENGTH} characters`;
+      } else if (field === "tiktokUrl" && !errors.tiktokUrl) {
+        errors.tiktokUrl = `Link must be at most ${MAX_FOOD_URL_LENGTH} characters`;
       }
     }
+  }
+  if (!errors.instagramUrl && normalized.instagramUrl !== undefined) {
+    if (!isHttpsUrl(normalized.instagramUrl)) errors.instagramUrl = "Link must start with https://";
+  }
+  if (!errors.tiktokUrl && normalized.tiktokUrl !== undefined) {
+    if (!isHttpsUrl(normalized.tiktokUrl)) errors.tiktokUrl = "Link must start with https://";
   }
   if (!errors.name) {
     const duplicate = existing.some(

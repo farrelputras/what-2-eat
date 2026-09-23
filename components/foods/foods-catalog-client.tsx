@@ -25,6 +25,7 @@ import {
 import type { FoodPlace } from "@/lib/foods/types";
 
 import { FoodFormDialog } from "./food-form-client";
+import { FoodSocialLinks } from "./food-social-links";
 
 interface FoodsCatalogClientProps {
   initialFoods: FoodPlace[];
@@ -248,6 +249,11 @@ export function FoodsCatalogClient({ initialFoods }: FoodsCatalogClientProps) {
               ))}
               <Badge variant="outline">{formatArea(picked.area)}</Badge>
             </div>
+            <FoodSocialLinks
+              instagramUrl={picked.instagramUrl}
+              placeName={picked.name}
+              tiktokUrl={picked.tiktokUrl}
+            />
             <div>
               <Button onClick={handleShuffle} size="sm" variant="outline">
                 Shuffle again
@@ -297,6 +303,11 @@ export function FoodsCatalogClient({ initialFoods }: FoodsCatalogClientProps) {
                 ))}
               </div>
               <p className="text-sm text-muted-foreground">{formatArea(place.area)}</p>
+              <FoodSocialLinks
+                instagramUrl={place.instagramUrl}
+                placeName={place.name}
+                tiktokUrl={place.tiktokUrl}
+              />
               {confirmId === place.id && (
                 <div className="grid gap-2.5 rounded-md border border-destructive/50 p-2.5">
                   <p className="text-sm">Delete {place.name}?</p>

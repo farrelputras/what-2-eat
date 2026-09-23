@@ -6,8 +6,10 @@ import seedRows from "../lib/foods/data/foods.json" with { type: "json" };
 interface SeedRow {
   area: string;
   id: string;
+  instagramUrl?: string;
   name: string;
   tags: string[];
+  tiktokUrl?: string;
 }
 
 const ALLOWED_AREAS = new Set(["batam", "malang", "surabaya"]);
@@ -38,6 +40,12 @@ async function main(): Promise<void> {
     seen.add(key);
     if (!ALLOWED_AREAS.has(row.area)) fail(`bad area in seed data: ${row.name} → ${row.area}`);
     if (row.tags.length < 1 || row.tags.length > 8) fail(`bad tags in seed data: ${row.name}`);
+    for (const url of [row.instagramUrl, row.tiktokUrl]) {
+      if (url === undefined) continue;
+      if (!url.startsWith("https://") || url.length > 300) {
+        fail(`bad social link in seed data: ${row.name} → ${url}`);
+      }
+    }
   }
 
   const existing = getApps();
@@ -66,14 +74,19 @@ async function main(): Promise<void> {
       skipped += 1;
       continue;
     }
-    await db.collection("food_places").doc(row.id).set({
-      area: row.area,
-      createdAt: new Date(),
-      createdByUid: "seed",
-      name: row.name,
-      tags: row.tags,
-      updatedAt: new Date(),
-    });
+    await db
+      .collection("food_places")
+      .doc(row.id)
+      .set({
+        area: row.area,
+        ...(row.instagramUrl ? { instagramUrl: row.instagramUrl } : {}),
+        createdAt: new Date(),
+        createdByUid: "seed",
+        name: row.name,
+        tags: row.tags,
+        ...(row.tiktokUrl ? { tiktokUrl: row.tiktokUrl } : {}),
+        updatedAt: new Date(),
+      });
     written += 1;
   }
   console.log(`seed-foods: wrote ${written}, skipped ${skipped} (already present).`);

@@ -11,12 +11,28 @@ export interface SessionUser {
   uid: string;
 }
 
+function toOptionalUrl(data: Record<string, unknown>, key: string): string | undefined {
+  const value = data[key];
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
 function toFoodPlace(id: string, data: Record<string, unknown>): FoodPlace | null {
   if (typeof data["name"] !== "string") return null;
   if (typeof data["area"] !== "string") return null;
   if (!Array.isArray(data["tags"])) return null;
   const tags = data["tags"].filter((tag): tag is string => typeof tag === "string");
-  return { area: data["area"], id, name: data["name"], tags };
+  const instagramUrl = toOptionalUrl(data, "instagramUrl");
+  const tiktokUrl = toOptionalUrl(data, "tiktokUrl");
+  return {
+    area: data["area"],
+    id,
+    ...(instagramUrl ? { instagramUrl } : {}),
+    name: data["name"],
+    tags,
+    ...(tiktokUrl ? { tiktokUrl } : {}),
+  };
 }
 
 export async function verifySessionCookie(): Promise<SessionUser | null> {
