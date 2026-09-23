@@ -41,6 +41,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# local secrets (Firebase service-account keys, etc.) — never commit
+docs/secrets/
+
 # vercel
 .vercel
 
