@@ -47,6 +47,10 @@ const nextConfig: NextConfig = {
         hostname: "cdn.shopify.com",
         protocol: "https",
       },
+      {
+        hostname: "lh3.googleusercontent.com",
+        protocol: "https",
+      },
     ],
     unoptimized: !!process.env.V0_CALLBACK_URL,
   },

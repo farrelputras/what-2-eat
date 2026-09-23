@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { FoodOverridesV1, FoodPlace } from "./types";
+import type { FoodPlace } from "./types";
 
 export interface FoodFilters {
   area: string;
@@ -102,18 +102,6 @@ export function validateFoodInput(
     if (duplicate) errors.name = "A place with this name already exists";
   }
   return errors;
-}
-
-export function mergeFoods(seed: FoodPlace[], overrides: FoodOverridesV1): FoodPlace[] {
-  const tombstones = new Set(overrides.deletedSeedIds);
-  const merged = seed
-    .filter((place) => !tombstones.has(place.id))
-    .map((place) => overrides.upserts[place.id] ?? place);
-  for (const [id, place] of Object.entries(overrides.upserts)) {
-    if (tombstones.has(id)) continue;
-    if (!seed.some((item) => item.id === id)) merged.push(place);
-  }
-  return merged;
 }
 
 export function slugFoodId(name: string): string {

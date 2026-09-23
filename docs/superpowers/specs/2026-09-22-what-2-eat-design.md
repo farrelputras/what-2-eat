@@ -1,7 +1,7 @@
 # What-2-Eat v1 — Food Catalog (Design / PRD)
 
 - Date: 2026-09-22
-- Status: draft, pending Farrel's review
+- Status: implemented (v1 catalog live on `/foods`).
 - Session scope: PRD only. No implementation.
 - Language: English (translated from the original Indonesian).
 - Note: the CRUD deferral in §§2 and 10 is superseded by `2026-09-22-what-2-eat-crud.md` (localStorage-backed CRUD, public, single entity).

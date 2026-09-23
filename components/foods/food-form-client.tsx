@@ -126,7 +126,7 @@ export function FoodFormDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{place ? "Edit place" : "Add place"}</DialogTitle>
-          <DialogDescription>Saved on this device.</DialogDescription>
+          <DialogDescription>Shared with everyone instantly.</DialogDescription>
         </DialogHeader>
         <form className="grid gap-5" onSubmit={handleSubmit}>
           <div className="grid gap-2.5">

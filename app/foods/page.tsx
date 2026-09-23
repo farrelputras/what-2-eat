@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
 import { FoodsCatalog } from "@/components/foods/foods-catalog";
 import { Container } from "@/components/ui/container";
 import { Page } from "@/components/ui/page";
 import { Sections } from "@/components/ui/sections";
-import { getAllFoods, getAreaCatalog, getTagCatalog } from "@/lib/foods/server";
+import { fetchFoodPlacesInitial, verifySessionCookie } from "@/lib/firebase/server";
 
 export const metadata: Metadata = {
   description: "Filter by tags and area, or pick randomly from the current results.",
@@ -12,10 +14,6 @@ export const metadata: Metadata = {
 };
 
 export default function FoodsPage() {
-  const foods = getAllFoods();
-  const tags = getTagCatalog();
-  const areas = getAreaCatalog();
-
   return (
     <Page className="pt-2.5 md:pt-10">
       <Container>
@@ -26,9 +24,24 @@ export default function FoodsPage() {
               Filter by tags and area, or let shuffle pick from the current results.
             </p>
           </div>
-          <FoodsCatalog areas={areas} foods={foods} tags={tags} />
+          <Suspense
+            fallback={
+              <p className="text-sm text-muted-foreground" aria-live="polite">
+                Loading shared catalog…
+              </p>
+            }
+          >
+            <FoodsGate />
+          </Suspense>
         </Sections>
       </Container>
     </Page>
   );
+}
+
+async function FoodsGate() {
+  const session = await verifySessionCookie();
+  if (!session) redirect("/login");
+  const foods = await fetchFoodPlacesInitial();
+  return <FoodsCatalog initialFoods={foods} />;
 }

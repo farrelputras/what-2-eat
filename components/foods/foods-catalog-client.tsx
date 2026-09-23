@@ -1,7 +1,7 @@
 "use client";
 
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import { useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -9,21 +9,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import {
+  createPlace as createPlaceRemote,
+  removePlace as removePlaceRemote,
+  subscribeAuthUser,
+  subscribeFoodPlaces,
+  updatePlace as updatePlaceRemote,
+} from "@/lib/firebase/client";
+import {
   deriveAreaCatalog,
   deriveTagCatalog,
   filterFoods,
   pickRandomFood,
   type FoodInput,
 } from "@/lib/foods";
-import { useFoods } from "@/lib/foods/client";
 import type { FoodPlace } from "@/lib/foods/types";
 
 import { FoodFormDialog } from "./food-form-client";
 
 interface FoodsCatalogClientProps {
-  areas: string[];
-  foods: FoodPlace[];
-  tags: string[];
+  initialFoods: FoodPlace[];
 }
 
 function formatArea(area: string): string {
@@ -31,26 +35,30 @@ function formatArea(area: string): string {
   return area.charAt(0).toUpperCase() + area.slice(1);
 }
 
-export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientProps) {
-  const {
-    createPlace,
-    foods: mergedFoods,
-    mounted,
-    persistent,
-    removePlace,
-    updatePlace,
-  } = useFoods(foods);
-  const catalogFoods = mounted ? mergedFoods : foods;
-  const catalogTags = mounted ? deriveTagCatalog(mergedFoods) : tags;
-  const catalogAreas = mounted ? deriveAreaCatalog(mergedFoods) : areas;
-
+export function FoodsCatalogClient({ initialFoods }: FoodsCatalogClientProps) {
+  const [foods, setFoods] = useState<FoodPlace[]>(initialFoods);
+  const [uid, setUid] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [area, setArea] = useState("all");
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [form, setForm] = useState<{ place: FoodPlace | null } | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const triggerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => subscribeAuthUser((user) => setUid(user?.uid ?? null)), []);
+
+  useEffect(
+    () =>
+      subscribeFoodPlaces(setFoods, (error) => {
+        toast.error(error.message);
+      }),
+    [],
+  );
+
+  const catalogTags = useMemo(() => deriveTagCatalog(foods), [foods]);
+  const catalogAreas = useMemo(() => deriveAreaCatalog(foods), [foods]);
 
   const visibleTags = useMemo(
     () => selectedTags.filter((tag) => catalogTags.includes(tag)),
@@ -59,10 +67,10 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
   const effectiveArea = area === "all" || catalogAreas.includes(area) ? area : "all";
 
   const filtered = useMemo(
-    () => filterFoods(catalogFoods, { area: effectiveArea, search, tags: visibleTags }),
-    [catalogFoods, effectiveArea, search, visibleTags],
+    () => filterFoods(foods, { area: effectiveArea, search, tags: visibleTags }),
+    [foods, effectiveArea, search, visibleTags],
   );
-  const picked = pickedId ? (catalogFoods.find((place) => place.id === pickedId) ?? null) : null;
+  const picked = pickedId ? (foods.find((place) => place.id === pickedId) ?? null) : null;
 
   function toggleTag(tag: string): void {
     setSelectedTags((prev) =>
@@ -108,23 +116,39 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
     triggerRef.current?.focus();
   }
 
-  function handleFormSubmit(input: FoodInput): void {
-    if (form?.place) {
-      updatePlace(form.place.id, input);
-      toast.success("Changes saved.");
-    } else {
-      createPlace(input);
-      toast.success("Place added.");
+  async function handleFormSubmit(input: FoodInput): Promise<void> {
+    if (saving) return;
+    if (!uid) {
+      toast.error("Please sign in again, then retry.");
+      return;
     }
-    closeForm();
+    setSaving(true);
+    try {
+      if (form?.place) {
+        await updatePlaceRemote(form.place.id, input);
+        toast.success("Changes saved.");
+      } else {
+        await createPlaceRemote(input, uid);
+        toast.success("Place added.");
+      }
+      closeForm();
+    } catch {
+      toast.error("Could not save. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function handleDeleteClick(place: FoodPlace): void {
+  async function handleDeleteClick(place: FoodPlace): Promise<void> {
     if (confirmId === place.id) {
-      removePlace(place.id);
-      if (pickedId === place.id) setPickedId(null);
-      setConfirmId(null);
-      toast.success("Place removed.");
+      try {
+        await removePlaceRemote(place.id);
+        if (pickedId === place.id) setPickedId(null);
+        setConfirmId(null);
+        toast.success("Place removed.");
+      } catch {
+        toast.error("Could not delete. Please try again.");
+      }
     } else {
       setConfirmId(place.id);
     }
@@ -186,7 +210,7 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
 
         <div className="flex flex-wrap items-center gap-4">
           <p className="text-sm text-muted-foreground" aria-live="polite">
-            {filtered.length} of {catalogFoods.length} places
+            {filtered.length} of {foods.length} places
           </p>
           {isFiltered && (
             <Button onClick={handleReset} size="sm" variant="ghost">
@@ -199,9 +223,7 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          {persistent
-            ? "Your additions are saved on this device."
-            : "Storage is full — changes apply to this session only."}
+          Shared catalog — changes appear for everyone instantly.
         </p>
       </div>
 
@@ -299,7 +321,7 @@ export function FoodsCatalogClient({ areas, foods, tags }: FoodsCatalogClientPro
 
       {form && (
         <FoodFormDialog
-          existing={catalogFoods}
+          existing={foods}
           key={form.place?.id ?? "new"}
           onClose={closeForm}
           onSubmit={handleFormSubmit}

@@ -1,7 +1,7 @@
 # What-2-Eat — Firebase Auth + Firestore (PRD)
 
 - Date: 2026-09-22
-- Status: draft locked (ready for implementation)
+- Status: implemented (Google login + Firestore realtime catalog live; code in working tree, uncommitted as of 2026-09-23).
 - Session scope: PRD only. No implementation.
 - Language: English (matches sibling specs; UI copy stays inline English per repo rule).
 - Supplements: `2026-09-22-what-2-eat-design.md` (v1 catalog) and `2026-09-22-what-2-eat-crud.md` (device-local CRUD). This doc supersedes the CRUD spec's storage decision (localStorage → Firestore) and its public/no-login access model (→ login-required, global shared). Firebase env and init are done together in the coding session.

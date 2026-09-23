@@ -1,7 +1,7 @@
 # What-2-Eat — Food Place CRUD (PRD)
 
 - Date: 2026-09-22
-- Status: draft, pending Farrel's review
+- Status: implemented (device-local iteration; storage later superseded by `2026-09-22-what-2-eat-firebase.md`).
 - Session scope: PRD only. No implementation.
 - Language: English (per request).
 - Supplements: `2026-09-22-what-2-eat-design.md` (v1 catalog spec, now in English). That doc deferred CRUD UI; this doc specifies it.

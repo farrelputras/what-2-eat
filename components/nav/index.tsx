@@ -6,6 +6,7 @@ import { Container } from "@/components/ui/container";
 import { shopConfig } from "@/lib/config";
 import type { MenuItem } from "@/lib/shopify/transforms/menu/types";
 
+import { AuthStateClient } from "../auth/auth-state-client";
 import { NavAccount, NavAccountFallback } from "./account";
 import { CartIcon, CartIconFallback } from "./cart";
 import { MobileMenu } from "./mobile-menu";
@@ -45,6 +46,7 @@ export function Nav() {
               <NavAccount />
             </Suspense>
           )}
+          <AuthStateClient />
           <Suspense fallback={<CartIconFallback />}>
             <CartIcon />
           </Suspense>
