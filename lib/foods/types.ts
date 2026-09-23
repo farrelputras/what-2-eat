@@ -1,5 +1,5 @@
 export interface FoodPlace {
-  area: string;
+  areas: string[];
   id: string;
   instagramUrl?: string;
   name: string;

@@ -248,7 +248,11 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
                   {tag}
                 </Badge>
               ))}
-              <Badge variant="outline">{formatArea(picked.area)}</Badge>
+              {picked.areas.map((item) => (
+                <Badge key={item} variant="outline">
+                  {formatArea(item)}
+                </Badge>
+              ))}
             </div>
             <FoodSocialLinks
               instagramUrl={picked.instagramUrl}
@@ -303,7 +307,13 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
                   </Badge>
                 ))}
               </div>
-              <p className="text-sm text-muted-foreground">{formatArea(place.area)}</p>
+              <div className="flex flex-wrap gap-2.5">
+                {place.areas.map((item) => (
+                  <Badge key={item} variant="outline">
+                    {formatArea(item)}
+                  </Badge>
+                ))}
+              </div>
               <FoodSocialLinks
                 instagramUrl={place.instagramUrl}
                 placeName={place.name}

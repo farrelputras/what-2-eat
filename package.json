@@ -10,6 +10,7 @@
     "format": "oxfmt",
     "lint": "oxlint . && oxfmt --check",
     "seed:foods": "tsx --env-file=.env.local scripts/seed-foods.ts",
+    "seed:migrate-areas": "tsx --env-file=.env.local scripts/migrate-food-areas.ts",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit"
   },
@@ -49,11 +50,11 @@
   "devDependencies": {
     "tsx": "^4.23.15"
   },
-  "engines": {
-    "node": "24"
-  },
   "overrides": {
     "jose": "5.10.0"
+  },
+  "engines": {
+    "node": "24"
   },
   "pnpm": {
     "overrides": {

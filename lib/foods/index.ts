@@ -9,7 +9,7 @@ export interface FoodFilters {
 }
 
 export interface FoodInput {
-  area: string;
+  areas: string[];
   instagramUrl?: string;
   name: string;
   tags: string[];
@@ -17,7 +17,7 @@ export interface FoodInput {
 }
 
 export interface FoodInputErrors {
-  area?: string;
+  areas?: string;
   instagramUrl?: string;
   name?: string;
   tags?: string;
@@ -37,7 +37,7 @@ export const MAX_FOOD_URL_LENGTH = 300;
 export const FOOD_AREAS = ["batam", "malang", "surabaya"] as const;
 
 const foodInputSchema = z.object({
-  area: z.enum(FOOD_AREAS),
+  areas: z.enum(FOOD_AREAS).array().min(1).max(3),
   instagramUrl: z.string().max(MAX_FOOD_URL_LENGTH).optional(),
   name: z.string().min(1).max(80),
   tags: z.string().min(1).max(24).array().min(1).max(8),
@@ -52,8 +52,15 @@ export function normalizeFoodName(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
-export function normalizeFoodArea(value: string): string {
-  return value.trim().toLowerCase();
+export function normalizeFoodAreas(values: string[]): string[] {
+  const allowed = new Set<string>(FOOD_AREAS);
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const area = raw.trim().toLowerCase();
+    if (area === "" || !allowed.has(area) || seen.has(area)) continue;
+    seen.add(area);
+  }
+  return FOOD_AREAS.filter((area) => seen.has(area)).slice(0, FOOD_AREAS.length);
 }
 
 export function normalizeFoodTags(values: string[]): string[] {
@@ -90,7 +97,7 @@ export function validateFoodInput(
   excludeId?: string,
 ): FoodInputErrors {
   const normalized: FoodInput = {
-    area: normalizeFoodArea(input.area),
+    areas: normalizeFoodAreas(input.areas),
     instagramUrl: normalizeFoodUrl(input.instagramUrl),
     name: normalizeFoodName(input.name),
     tags: normalizeFoodTags(input.tags),
@@ -106,8 +113,8 @@ export function validateFoodInput(
           issue.code === "too_big"
             ? "Name must be at most 80 characters"
             : "Place name is required";
-      } else if (field === "area" && !errors.area) {
-        errors.area = "Select an area";
+      } else if (field === "areas" && !errors.areas) {
+        errors.areas = "Select at least 1 area";
       } else if (field === "tags" && !errors.tags) {
         errors.tags =
           issue.code === "too_big"
@@ -158,7 +165,8 @@ export function filterFoods(foods: FoodPlace[], filters: FoodFilters): FoodPlace
   const area = filters.area.trim().toLowerCase();
 
   return foods.filter((place) => {
-    if (area !== "" && area !== "all" && place.area.toLowerCase() !== area) return false;
+    if (area !== "" && area !== "all" && !place.areas.some((item) => item.toLowerCase() === area))
+      return false;
     if (selectedTags.size > 0 && !place.tags.some((tag) => selectedTags.has(tag))) return false;
     if (query !== "" && !place.name.toLowerCase().includes(query)) return false;
     return true;
@@ -170,7 +178,7 @@ export function deriveTagCatalog(foods: FoodPlace[]): string[] {
 }
 
 export function deriveAreaCatalog(foods: FoodPlace[]): string[] {
-  return [...new Set(foods.map((place) => place.area))].sort((a, b) => a.localeCompare(b));
+  return [...new Set(foods.flatMap((place) => place.areas))].sort((a, b) => a.localeCompare(b));
 }
 
 export function pickRandomFood(foods: FoodPlace[]): FoodPlace | undefined {

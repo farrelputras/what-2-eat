@@ -26,7 +26,7 @@ import {
 } from "firebase/firestore";
 
 import {
-  normalizeFoodArea,
+  normalizeFoodAreas,
   normalizeFoodName,
   normalizeFoodTags,
   normalizeFoodUrl,
@@ -187,13 +187,17 @@ function toOptionalUrl(data: Record<string, unknown>, key: string): string | und
 
 function toFoodPlace(id: string, data: Record<string, unknown>): FoodPlace | null {
   if (typeof data["name"] !== "string") return null;
-  if (typeof data["area"] !== "string") return null;
+  if (!Array.isArray(data["areas"])) return null;
+  const areas = normalizeFoodAreas(
+    data["areas"].filter((area): area is string => typeof area === "string"),
+  );
+  if (areas.length === 0) return null;
   if (!Array.isArray(data["tags"])) return null;
   const tags = data["tags"].filter((tag): tag is string => typeof tag === "string");
   const instagramUrl = toOptionalUrl(data, "instagramUrl");
   const tiktokUrl = toOptionalUrl(data, "tiktokUrl");
   return {
-    area: data["area"],
+    areas,
     id,
     ...(instagramUrl ? { instagramUrl } : {}),
     name: data["name"],
@@ -232,7 +236,7 @@ export async function createPlace(input: FoodInput, uid: string): Promise<FoodPl
   const instagramUrl = normalizeFoodUrl(input.instagramUrl);
   const tiktokUrl = normalizeFoodUrl(input.tiktokUrl);
   const place: FoodPlace = {
-    area: normalizeFoodArea(input.area),
+    areas: normalizeFoodAreas(input.areas),
     id: slugFoodId(normalizeFoodName(input.name)),
     ...(instagramUrl ? { instagramUrl } : {}),
     name: normalizeFoodName(input.name),
@@ -240,7 +244,7 @@ export async function createPlace(input: FoodInput, uid: string): Promise<FoodPl
     ...(tiktokUrl ? { tiktokUrl } : {}),
   };
   await setDoc(doc(db, FOOD_PLACES_COLLECTION, place.id), {
-    area: place.area,
+    areas: place.areas,
     ...(instagramUrl ? { instagramUrl } : {}),
     createdAt: serverTimestamp(),
     createdByUid: uid,
@@ -256,7 +260,7 @@ export async function updatePlace(id: string, input: FoodInput): Promise<void> {
   const db = getFirebaseDb();
   if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
   await updateDoc(doc(db, FOOD_PLACES_COLLECTION, id), {
-    area: normalizeFoodArea(input.area),
+    areas: normalizeFoodAreas(input.areas),
     instagramUrl: normalizeFoodUrl(input.instagramUrl) ?? deleteField(),
     name: normalizeFoodName(input.name),
     tags: normalizeFoodTags(input.tags),

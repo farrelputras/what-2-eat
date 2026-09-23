@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import {
   FOOD_AREAS,
   MAX_TAGS_PER_PLACE,
@@ -47,7 +46,7 @@ export function FoodFormDialog({
   tagSuggestions,
 }: FoodFormDialogProps) {
   const [name, setName] = useState(place?.name ?? "");
-  const [area, setArea] = useState(place?.area ?? "");
+  const [areas, setAreas] = useState<string[]>(place?.areas ?? []);
   const [instagramUrl, setInstagramUrl] = useState(place?.instagramUrl ?? "");
   const [tiktokUrl, setTiktokUrl] = useState(place?.tiktokUrl ?? "");
   const [tags, setTags] = useState<string[]>(place?.tags ?? []);
@@ -109,10 +108,16 @@ export function FoodFormDialog({
     }
   }
 
+  function toggleArea(area: string): void {
+    setAreas((prev) =>
+      prev.includes(area) ? prev.filter((item) => item !== area) : [...prev, area],
+    );
+  }
+
   function handleSubmit(event: FormEvent): void {
     event.preventDefault();
     const input: FoodInput = {
-      area,
+      areas,
       instagramUrl,
       name,
       tags: [...tags, ...splitDraft(tagDraft)],
@@ -120,7 +125,7 @@ export function FoodFormDialog({
     };
     const next = validateFoodInput(input, existing, place?.id);
     setErrors(next);
-    if (next.area ?? next.instagramUrl ?? next.name ?? next.tags ?? next.tiktokUrl) return;
+    if (next.areas ?? next.instagramUrl ?? next.name ?? next.tags ?? next.tiktokUrl) return;
     onSubmit(input);
   }
 
@@ -154,28 +159,29 @@ export function FoodFormDialog({
             )}
           </div>
 
-          <div className="grid gap-2.5">
-            <Label htmlFor="food-form-area">Area</Label>
-            <Select onValueChange={(value) => setArea(value ?? "")} value={area}>
-              <SelectTrigger className="w-full" id="food-form-area">
-                <span className={area === "" ? "text-muted-foreground" : undefined}>
-                  {area === "" ? "Select area" : formatArea(area)}
-                </span>
-              </SelectTrigger>
-              <SelectContent>
-                {FOOD_AREAS.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {formatArea(item)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.area && (
+          <fieldset className="grid gap-2.5" aria-invalid={errors.areas ? true : undefined}>
+            <legend className="text-sm font-medium">Areas</legend>
+            <div className="flex flex-wrap gap-2.5">
+              {FOOD_AREAS.map((item) => (
+                <Label key={item} htmlFor={`food-form-area-${item}`}>
+                  <input
+                    checked={areas.includes(item)}
+                    className="cursor-pointer"
+                    id={`food-form-area-${item}`}
+                    onChange={() => toggleArea(item)}
+                    type="checkbox"
+                    value={item}
+                  />
+                  {formatArea(item)}
+                </Label>
+              ))}
+            </div>
+            {errors.areas && (
               <p className="text-sm text-destructive" role="alert">
-                {errors.area}
+                {errors.areas}
               </p>
             )}
-          </div>
+          </fieldset>
 
           <div className="grid gap-2.5">
             <Label htmlFor="food-form-tags">

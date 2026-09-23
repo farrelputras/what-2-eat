@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { connection } from "next/server";
 
+import { normalizeFoodAreas } from "@/lib/foods";
 import type { FoodPlace } from "@/lib/foods/types";
 
 import { getAdminAuth, getAdminDb, isAuthBypassEnabled, SESSION_COOKIE_NAME } from "./admin";
@@ -69,13 +70,17 @@ function toOptionalUrl(data: Record<string, unknown>, key: string): string | und
 
 function toFoodPlace(id: string, data: Record<string, unknown>): FoodPlace | null {
   if (typeof data["name"] !== "string") return null;
-  if (typeof data["area"] !== "string") return null;
+  if (!Array.isArray(data["areas"])) return null;
+  const areas = normalizeFoodAreas(
+    data["areas"].filter((area): area is string => typeof area === "string"),
+  );
+  if (areas.length === 0) return null;
   if (!Array.isArray(data["tags"])) return null;
   const tags = data["tags"].filter((tag): tag is string => typeof tag === "string");
   const instagramUrl = toOptionalUrl(data, "instagramUrl");
   const tiktokUrl = toOptionalUrl(data, "tiktokUrl");
   return {
-    area: data["area"],
+    areas,
     id,
     ...(instagramUrl ? { instagramUrl } : {}),
     name: data["name"],

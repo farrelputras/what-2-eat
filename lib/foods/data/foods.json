@@ -1,79 +1,79 @@
 [
   {
-    "area": "surabaya",
+    "areas": ["surabaya"],
     "id": "yoshinoya",
     "name": "Yoshinoya",
     "tags": ["Beef", "Chicken", "Japanese", "Rice"]
   },
   {
-    "area": "surabaya",
+    "areas": ["surabaya"],
     "id": "dikichi",
     "name": "Dikichi",
     "tags": ["Chicken", "Japanese", "Rice"]
   },
   {
-    "area": "surabaya",
+    "areas": ["surabaya"],
     "id": "selamat-sukses",
     "name": "Selamat Sukses (Kecombrang)",
     "tags": ["Indonesian", "Rice"]
   },
   {
-    "area": "surabaya",
+    "areas": ["surabaya"],
     "id": "subway",
     "name": "Subway",
     "tags": ["Beef", "Chicken", "Sandwich", "Western"]
   },
   {
-    "area": "surabaya",
+    "areas": ["surabaya"],
     "id": "greenly",
     "name": "Greenly",
     "tags": ["Healthy", "Salad", "Western"]
   },
   {
-    "area": "surabaya",
+    "areas": ["surabaya"],
     "id": "dominos-pizza",
     "name": "Domino's Pizza",
     "tags": ["Pizza", "Western"]
   },
   {
-    "area": "surabaya",
+    "areas": ["surabaya"],
     "id": "pizza-hut",
     "name": "Pizza Hut",
     "tags": ["Pasta", "Pizza", "Western"]
   },
   {
-    "area": "surabaya",
+    "areas": ["surabaya"],
     "id": "warkam",
     "name": "Warkam",
     "tags": ["Indonesian", "Noodles", "Rice"]
   },
-  { "area": "surabaya", "id": "j-one", "name": "J-One", "tags": ["Japanese"] },
+  { "areas": ["surabaya"], "id": "j-one", "name": "J-One", "tags": ["Japanese"] },
   {
-    "area": "surabaya",
+    "areas": ["surabaya"],
     "id": "soto-cak-har",
     "name": "Soto Cak Har",
     "tags": ["Chicken", "Indonesian", "Soup", "Soto"]
   },
   {
-    "area": "surabaya",
+    "areas": ["surabaya"],
     "id": "mie-gacoan",
     "name": "Mie Gacoan",
     "tags": ["Indonesian", "Noodles", "Spicy"]
   },
-  { "area": "surabaya", "id": "uncle-w", "name": "Uncle W", "tags": ["Chinese", "Rice"] },
+  { "areas": ["surabaya"], "id": "uncle-w", "name": "Uncle W", "tags": ["Chinese", "Rice"] },
   {
-    "area": "surabaya",
+    "areas": ["surabaya"],
     "id": "mcdonalds",
     "name": "McDonald's",
     "tags": ["Burger", "Chicken", "Fast Food", "Western"]
   },
-  { "area": "surabaya", "id": "kfc", "name": "KFC", "tags": ["Burger", "Chicken", "Fast Food"] },
+  { "areas": ["surabaya"], "id": "kfc", "name": "KFC", "tags": ["Burger", "Chicken", "Fast Food"] },
   {
-    "area": "surabaya",
+    "areas": ["surabaya"],
     "id": "sushi-go",
     "name": "Sushi Go!",
     "tags": ["Japanese", "Rice", "Sushi"]
   },
-  { "area": "surabaya", "id": "aeon", "name": "AEON", "tags": ["Food Court", "Japanese"] },
-  { "area": "surabaya", "id": "taria", "name": "Taria", "tags": ["Coffee"] }
+  { "areas": ["surabaya"], "id": "aeon", "name": "AEON", "tags": ["Food Court", "Japanese"] },
+  { "areas": ["surabaya"], "id": "taria", "name": "Taria", "tags": ["Coffee"] }
 ]

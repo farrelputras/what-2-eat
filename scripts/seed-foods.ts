@@ -4,7 +4,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import seedRows from "../lib/foods/data/foods.json" with { type: "json" };
 
 interface SeedRow {
-  area: string;
+  areas: string[];
   id: string;
   instagramUrl?: string;
   name: string;
@@ -41,7 +41,10 @@ async function main(): Promise<void> {
     const key = row.name.trim().replace(/\s+/g, " ").toLowerCase();
     if (seen.has(key)) fail(`duplicate name in seed data: ${row.name}`);
     seen.add(key);
-    if (!ALLOWED_AREAS.has(row.area)) fail(`bad area in seed data: ${row.name} → ${row.area}`);
+    if (row.areas.length < 1 || row.areas.length > 3) fail(`bad areas in seed data: ${row.name}`);
+    for (const area of row.areas) {
+      if (!ALLOWED_AREAS.has(area)) fail(`bad area in seed data: ${row.name} → ${area}`);
+    }
     if (row.tags.length < 1 || row.tags.length > 8) fail(`bad tags in seed data: ${row.name}`);
     for (const url of [row.instagramUrl, row.tiktokUrl]) {
       if (url === undefined) continue;
@@ -90,7 +93,7 @@ async function main(): Promise<void> {
       .collection("food_places")
       .doc(row.id)
       .set({
-        area: row.area,
+        areas: row.areas,
         ...(row.instagramUrl ? { instagramUrl: row.instagramUrl } : {}),
         createdAt: new Date(),
         createdByUid: "seed",
