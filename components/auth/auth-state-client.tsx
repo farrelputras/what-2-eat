@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { subscribeAuthUser } from "@/lib/firebase/client";
+import { TEST_BYPASS_EMAIL, TEST_BYPASS_NAME } from "@/lib/firebase/index";
 
 import { LogoutButtonClient } from "./logout-button-client";
 
@@ -14,10 +15,28 @@ function initialsOf(displayName: string | null, email: string | null): string {
   return source.trim().charAt(0).toUpperCase() || "?";
 }
 
-export function AuthStateClient() {
+export function AuthStateClient({ bypass = false }: { bypass?: boolean }) {
   const [user, setUser] = useState<User | null | undefined>(undefined);
 
-  useEffect(() => subscribeAuthUser(setUser), []);
+  useEffect(() => subscribeAuthUser(setUser, { bypass }), [bypass]);
+
+  if (bypass) {
+    return (
+      <span className="flex items-center gap-2.5">
+        <span
+          aria-hidden
+          className="flex size-5 items-center justify-center rounded-full bg-muted text-[11px] font-medium"
+        >
+          {initialsOf(TEST_BYPASS_NAME, TEST_BYPASS_EMAIL)}
+        </span>
+        <span className="hidden max-w-32 truncate text-sm text-muted-foreground sm:inline">
+          {TEST_BYPASS_NAME}
+        </span>
+        <LogoutButtonClient bypass />
+        <span className="sr-only">{`Signed in as ${TEST_BYPASS_NAME} (test mode)`}</span>
+      </span>
+    );
+  }
 
   if (user === undefined) {
     return <span aria-hidden className="size-5 rounded-full bg-muted" />;
@@ -54,7 +73,7 @@ export function AuthStateClient() {
       <span className="hidden max-w-32 truncate text-sm text-muted-foreground sm:inline">
         {user.displayName ?? user.email}
       </span>
-      <LogoutButtonClient />
+      <LogoutButtonClient bypass={bypass} />
       <span className="sr-only">{`Signed in as ${user.displayName ?? user.email ?? "you"}`}</span>
     </span>
   );

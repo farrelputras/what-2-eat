@@ -28,6 +28,7 @@ import { FoodFormDialog } from "./food-form-client";
 import { FoodSocialLinks } from "./food-social-links";
 
 interface FoodsCatalogClientProps {
+  bypass?: boolean;
   initialFoods: FoodPlace[];
 }
 
@@ -36,7 +37,7 @@ function formatArea(area: string): string {
   return area.charAt(0).toUpperCase() + area.slice(1);
 }
 
-export function FoodsCatalogClient({ initialFoods }: FoodsCatalogClientProps) {
+export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalogClientProps) {
   const [foods, setFoods] = useState<FoodPlace[]>(initialFoods);
   const [uid, setUid] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -48,7 +49,7 @@ export function FoodsCatalogClient({ initialFoods }: FoodsCatalogClientProps) {
   const [saving, setSaving] = useState(false);
   const triggerRef = useRef<HTMLElement | null>(null);
 
-  useEffect(() => subscribeAuthUser((user) => setUid(user?.uid ?? null)), []);
+  useEffect(() => subscribeAuthUser((user) => setUid(user?.uid ?? null), { bypass }), [bypass]);
 
   useEffect(
     () =>

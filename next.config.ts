@@ -8,6 +8,15 @@ import type { NextConfig } from "next";
 const botIdEnabled = false;
 const agentEnabled = false;
 
+if (
+  process.env.AUTH_BYPASS === "true" &&
+  (process.env.NODE_ENV === "production" ||
+    process.env.VERCEL_ENV === "production" ||
+    process.env.VERCEL_ENV === "preview")
+) {
+  throw new Error("AUTH_BYPASS must not be enabled in production/preview");
+}
+
 function withLocalShopConfig(
   config: NextConfig,
   plugins: readonly unknown[] = [],

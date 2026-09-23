@@ -6,7 +6,7 @@ import { LoginButtonClient } from "@/components/auth/login-button-client";
 import { Container } from "@/components/ui/container";
 import { Page } from "@/components/ui/page";
 import { Sections } from "@/components/ui/sections";
-import { isAdminConfigured } from "@/lib/firebase/admin";
+import { isAdminConfigured, isAuthBypassEnabled } from "@/lib/firebase/admin";
 import { verifySessionCookie } from "@/lib/firebase/server";
 
 export const metadata: Metadata = {
@@ -15,6 +15,7 @@ export const metadata: Metadata = {
 };
 
 export default function LoginPage() {
+  const bypass = isAuthBypassEnabled();
   return (
     <Page>
       <Container>
@@ -25,14 +26,23 @@ export default function LoginPage() {
               The food catalog is shared. Sign in with Google to view and edit it together.
             </p>
           </div>
-          {!isAdminConfigured() && (
+          {bypass ? (
             <p
               className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground"
               role="note"
             >
-              Firebase is not configured yet. Fill in your `.env.local` values, then refresh this
-              page.
+              Test mode — signed in as test-user (auth bypass).
             </p>
+          ) : (
+            !isAdminConfigured() && (
+              <p
+                className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground"
+                role="note"
+              >
+                Firebase is not configured yet. Fill in your `.env.local` values, then refresh this
+                page.
+              </p>
+            )
           )}
           <Suspense
             fallback={
@@ -50,6 +60,7 @@ export default function LoginPage() {
 }
 
 async function LoginGate() {
+  if (isAuthBypassEnabled()) redirect("/foods");
   const session = await verifySessionCookie();
   if (session) redirect("/foods");
   return <LoginButtonClient />;

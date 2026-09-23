@@ -25,12 +25,15 @@ function isPlaceholder(value: string | undefined): boolean {
 }
 
 async function main(): Promise<void> {
-  if (
-    isPlaceholder(process.env.FIREBASE_PROJECT_ID) ||
-    isPlaceholder(process.env.FIREBASE_CLIENT_EMAIL) ||
-    isPlaceholder(process.env.FIREBASE_PRIVATE_KEY)
-  ) {
-    fail("Admin env is placeholders. Fill in .env.local first (see .env.example).");
+  const useEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+  if (!useEmulator) {
+    if (
+      isPlaceholder(process.env.FIREBASE_PROJECT_ID) ||
+      isPlaceholder(process.env.FIREBASE_CLIENT_EMAIL) ||
+      isPlaceholder(process.env.FIREBASE_PRIVATE_KEY)
+    ) {
+      fail("Admin env is placeholders. Fill in .env.local first (see .env.example).");
+    }
   }
   const rows = seedRows as SeedRow[];
   const seen = new Set<string>();
@@ -52,14 +55,23 @@ async function main(): Promise<void> {
   const app =
     existing.length > 0
       ? existing[0]
-      : initializeApp({
-          credential: cert({
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-            projectId: process.env.FIREBASE_PROJECT_ID,
-          }),
-        });
+      : useEmulator
+        ? initializeApp({
+            projectId: process.env.FIREBASE_PROJECT_ID ?? "what-2-eat-dev",
+          })
+        : initializeApp({
+            credential: cert({
+              clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+              privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+              projectId: process.env.FIREBASE_PROJECT_ID,
+            }),
+          });
   if (!app) fail("could not init Admin SDK");
+  if (useEmulator) {
+    console.log(
+      `seed-foods: targeting Firestore emulator at ${process.env.FIRESTORE_EMULATOR_HOST}.`,
+    );
+  }
   const db = getFirestore(app);
 
   const existingDocs = await db.collection("food_places").get();

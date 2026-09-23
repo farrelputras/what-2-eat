@@ -6,6 +6,7 @@ import { FoodsCatalog } from "@/components/foods/foods-catalog";
 import { Container } from "@/components/ui/container";
 import { Page } from "@/components/ui/page";
 import { Sections } from "@/components/ui/sections";
+import { isAuthBypassEnabled } from "@/lib/firebase/admin";
 import { fetchFoodPlacesInitial, verifySessionCookie } from "@/lib/firebase/server";
 
 export const metadata: Metadata = {
@@ -40,8 +41,9 @@ export default function FoodsPage() {
 }
 
 async function FoodsGate() {
+  const bypass = isAuthBypassEnabled();
   const session = await verifySessionCookie();
   if (!session) redirect("/login");
   const foods = await fetchFoodPlacesInitial();
-  return <FoodsCatalog initialFoods={foods} />;
+  return <FoodsCatalog bypass={bypass} initialFoods={foods} />;
 }

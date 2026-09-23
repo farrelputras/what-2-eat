@@ -1,6 +1,7 @@
 import {
   getAdminAuth,
   getSessionCookieMaxAgeSeconds,
+  isAuthBypassEnabled,
   SESSION_COOKIE_NAME,
 } from "@/lib/firebase/admin";
 
@@ -23,6 +24,12 @@ function clearedSessionCookie(): string {
 }
 
 export async function POST(request: Request) {
+  if (isAuthBypassEnabled()) {
+    return Response.json(
+      { bypass: true, ok: true },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
   const auth = getAdminAuth();
   if (!auth) {
     return Response.json(
@@ -59,6 +66,12 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE() {
+  if (isAuthBypassEnabled()) {
+    return Response.json(
+      { bypass: true, ok: true },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
   const response = Response.json(
     { ok: true },
     { headers: { "Cache-Control": "private, no-store" } },

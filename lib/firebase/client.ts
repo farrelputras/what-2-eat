@@ -2,6 +2,7 @@
 
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import {
+  connectAuthEmulator,
   getAuth,
   GoogleAuthProvider,
   onAuthStateChanged,
@@ -11,6 +12,7 @@ import {
 } from "firebase/auth";
 import {
   collection,
+  connectFirestoreEmulator,
   deleteDoc,
   deleteField,
   doc,
@@ -32,6 +34,8 @@ import {
 } from "@/lib/foods";
 import type { FoodPlace } from "@/lib/foods/types";
 
+import { TEST_BYPASS_EMAIL, TEST_BYPASS_NAME, TEST_BYPASS_UID } from "./index";
+
 const FOOD_PLACES_COLLECTION = "food_places";
 
 function isPlaceholder(value: string | undefined): boolean {
@@ -50,19 +54,50 @@ export function isFirebaseConfigured(): boolean {
 let app: FirebaseApp | null = null;
 let authInstance: ReturnType<typeof getAuth> | null = null;
 let dbInstance: Firestore | null = null;
+let authEmulatorConnected = false;
+let firestoreEmulatorConnected = false;
+
+function firestoreEmulatorHost(): string | undefined {
+  const value = process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST;
+  return value && value.trim() !== "" ? value.trim() : undefined;
+}
+
+function authEmulatorHost(): string | undefined {
+  const value = process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST;
+  return value && value.trim() !== "" ? value.trim() : undefined;
+}
+
+function isEmulatorEnabled(): boolean {
+  return firestoreEmulatorHost() !== undefined || authEmulatorHost() !== undefined;
+}
+
+function parseHostPort(value: string, defaultPort: number): { host: string; port: number } {
+  const trimmed = value.trim();
+  const lastColon = trimmed.lastIndexOf(":");
+  if (lastColon === -1) return { host: trimmed, port: defaultPort };
+  const port = Number.parseInt(trimmed.slice(lastColon + 1), 10);
+  if (Number.isNaN(port)) return { host: trimmed, port: defaultPort };
+  return { host: trimmed.slice(0, lastColon) || "127.0.0.1", port };
+}
+
+function authEmulatorUrl(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+  return `http://${trimmed}`;
+}
 
 function getFirebaseApp(): FirebaseApp | null {
-  if (!isFirebaseConfigured()) return null;
+  if (!isFirebaseConfigured() && !isEmulatorEnabled()) return null;
   if (app) return app;
   app =
     getApps().length > 0
       ? getApp()
       : initializeApp({
-          apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-          appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+          apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "fake-api-key",
+          appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "fake-app-id",
           authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
           messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-          projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+          projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "what-2-eat-dev",
           storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
         });
   return app;
@@ -71,18 +106,49 @@ function getFirebaseApp(): FirebaseApp | null {
 function getFirebaseAuth() {
   const firebaseApp = getFirebaseApp();
   if (!firebaseApp) return null;
-  if (!authInstance) authInstance = getAuth(firebaseApp);
+  if (!authInstance) {
+    authInstance = getAuth(firebaseApp);
+    const host = authEmulatorHost();
+    if (host && !authEmulatorConnected) {
+      connectAuthEmulator(authInstance, authEmulatorUrl(host), { disableWarnings: true });
+      authEmulatorConnected = true;
+    }
+  }
   return authInstance;
 }
 
 function getFirebaseDb(): Firestore | null {
   const firebaseApp = getFirebaseApp();
   if (!firebaseApp) return null;
-  if (!dbInstance) dbInstance = getFirestore(firebaseApp);
+  if (!dbInstance) {
+    dbInstance = getFirestore(firebaseApp);
+    const host = firestoreEmulatorHost();
+    if (host && !firestoreEmulatorConnected) {
+      const { host: hostname, port } = parseHostPort(host, 8080);
+      connectFirestoreEmulator(dbInstance, hostname, port);
+      firestoreEmulatorConnected = true;
+    }
+  }
   return dbInstance;
 }
 
-export function subscribeAuthUser(next: (user: User | null) => void): () => void {
+function bypassUser(): User {
+  return {
+    displayName: TEST_BYPASS_NAME,
+    email: TEST_BYPASS_EMAIL,
+    photoURL: null,
+    uid: TEST_BYPASS_UID,
+  } as unknown as User;
+}
+
+export function subscribeAuthUser(
+  next: (user: User | null) => void,
+  options?: { bypass?: boolean },
+): () => void {
+  if (options?.bypass) {
+    next(bypassUser());
+    return () => {};
+  }
   const auth = getFirebaseAuth();
   if (!auth) {
     next(null);

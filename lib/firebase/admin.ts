@@ -6,6 +6,25 @@ export const SESSION_COOKIE_NAME = "__session";
 
 const SESSION_COOKIE_MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000;
 
+const BYPASS_GUARD_MESSAGE = "AUTH_BYPASS must not be enabled in production/preview";
+
+export function isAuthBypassEnabled(): boolean {
+  if (process.env.AUTH_BYPASS !== "true") return false;
+  if (process.env.NODE_ENV === "production") return false;
+  return true;
+}
+
+export function assertBypassAllowed(): void {
+  if (
+    process.env.AUTH_BYPASS === "true" &&
+    (process.env.NODE_ENV === "production" ||
+      process.env.VERCEL_ENV === "production" ||
+      process.env.VERCEL_ENV === "preview")
+  ) {
+    throw new Error(BYPASS_GUARD_MESSAGE);
+  }
+}
+
 export function getSessionCookieMaxAgeSeconds(): number {
   return SESSION_COOKIE_MAX_AGE_MS / 1000;
 }

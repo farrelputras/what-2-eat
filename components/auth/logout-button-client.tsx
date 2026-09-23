@@ -7,9 +7,17 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { signOutUser } from "@/lib/firebase/client";
 
-export function LogoutButtonClient() {
+export function LogoutButtonClient({ bypass = false }: { bypass?: boolean }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+
+  if (bypass) {
+    return (
+      <Button disabled size="sm" title="Sign out is disabled in test mode" variant="outline">
+        Test mode
+      </Button>
+    );
+  }
 
   async function handleSignOut(): Promise<void> {
     setPending(true);

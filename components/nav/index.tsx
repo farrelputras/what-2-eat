@@ -4,6 +4,7 @@ import { Suspense } from "react";
 
 import { Container } from "@/components/ui/container";
 import { shopConfig } from "@/lib/config";
+import { isAuthBypassEnabled } from "@/lib/firebase/admin";
 import type { MenuItem } from "@/lib/shopify/transforms/menu/types";
 
 import { AuthStateClient } from "../auth/auth-state-client";
@@ -46,7 +47,7 @@ export function Nav() {
               <NavAccount />
             </Suspense>
           )}
-          <AuthStateClient />
+          <AuthStateClient bypass={isAuthBypassEnabled()} />
           <Suspense fallback={<CartIconFallback />}>
             <CartIcon />
           </Suspense>

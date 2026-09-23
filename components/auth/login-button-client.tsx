@@ -7,9 +7,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { signInWithGoogle } from "@/lib/firebase/client";
 
-export function LoginButtonClient() {
+export function LoginButtonClient({ bypass = false }: { bypass?: boolean }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+
+  if (bypass) {
+    return <Button onClick={() => router.push("/foods")}>Continue to catalog (test mode)</Button>;
+  }
 
   async function handleSignIn(): Promise<void> {
     setPending(true);

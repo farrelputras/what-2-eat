@@ -2,13 +2,22 @@ import { cookies } from "next/headers";
 
 import type { FoodPlace } from "@/lib/foods/types";
 
-import { getAdminAuth, getAdminDb, SESSION_COOKIE_NAME } from "./admin";
+import { getAdminAuth, getAdminDb, isAuthBypassEnabled, SESSION_COOKIE_NAME } from "./admin";
+import { TEST_BYPASS_EMAIL, TEST_BYPASS_NAME, TEST_BYPASS_UID } from "./index";
 
 export interface SessionUser {
   email: string | null;
   name: string | null;
   photoUrl: string | null;
   uid: string;
+}
+
+let bypassLogged = false;
+
+function logBypassOnce(): void {
+  if (bypassLogged) return;
+  bypassLogged = true;
+  console.info("auth bypass active (test-user, emulator)");
 }
 
 function toOptionalUrl(data: Record<string, unknown>, key: string): string | undefined {
@@ -36,6 +45,15 @@ function toFoodPlace(id: string, data: Record<string, unknown>): FoodPlace | nul
 }
 
 export async function verifySessionCookie(): Promise<SessionUser | null> {
+  if (isAuthBypassEnabled()) {
+    logBypassOnce();
+    return {
+      email: TEST_BYPASS_EMAIL,
+      name: TEST_BYPASS_NAME,
+      photoUrl: null,
+      uid: TEST_BYPASS_UID,
+    };
+  }
   const store = await cookies();
   const session = store.get(SESSION_COOKIE_NAME)?.value;
   if (!session) return null;
@@ -56,7 +74,14 @@ export async function verifySessionCookie(): Promise<SessionUser | null> {
 
 export async function fetchFoodPlacesInitial(): Promise<FoodPlace[]> {
   const db = getAdminDb();
-  if (!db) return [];
+  if (!db) {
+    if (isAuthBypassEnabled()) {
+      throw new Error(
+        "Auth bypass is on but the Firestore emulator is unreachable. Start it with `firebase emulators:start`, then retry.",
+      );
+    }
+    return [];
+  }
   const snapshot = await db.collection("food_places").get();
   const places: FoodPlace[] = [];
   for (const doc of snapshot.docs) {
