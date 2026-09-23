@@ -1,9 +1,15 @@
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 
 import type { FoodPlace } from "@/lib/foods/types";
 
 import { getAdminAuth, getAdminDb, isAuthBypassEnabled, SESSION_COOKIE_NAME } from "./admin";
-import { TEST_BYPASS_EMAIL, TEST_BYPASS_NAME, TEST_BYPASS_UID } from "./index";
+import {
+  TEST_BYPASS_EMAIL,
+  TEST_BYPASS_NAME,
+  TEST_BYPASS_PASSWORD,
+  TEST_BYPASS_UID,
+} from "./index";
 
 export interface SessionUser {
   email: string | null;
@@ -13,11 +19,45 @@ export interface SessionUser {
 }
 
 let bypassLogged = false;
+let bypassUserEnsured: Promise<void> | null = null;
 
 function logBypassOnce(): void {
   if (bypassLogged) return;
   bypassLogged = true;
   console.info("auth bypass active (test-user, emulator)");
+}
+
+function ensureBypassUser(): Promise<void> {
+  if (!bypassUserEnsured) {
+    bypassUserEnsured = (async () => {
+      const auth = getAdminAuth();
+      if (!auth) {
+        throw new Error(
+          "Auth bypass is on but the Auth emulator is unreachable. Start it with `firebase emulators:start`, then retry.",
+        );
+      }
+      try {
+        await auth.createUser({
+          displayName: TEST_BYPASS_NAME,
+          email: TEST_BYPASS_EMAIL,
+          password: TEST_BYPASS_PASSWORD,
+          uid: TEST_BYPASS_UID,
+        });
+      } catch (error) {
+        const code =
+          typeof (error as { code?: unknown }).code === "string"
+            ? (error as { code: string }).code
+            : null;
+        if (code !== "auth/uid-already-exists" && code !== "auth/email-already-exists") {
+          throw error;
+        }
+      }
+    })();
+    bypassUserEnsured.catch(() => {
+      bypassUserEnsured = null;
+    });
+  }
+  return bypassUserEnsured;
 }
 
 function toOptionalUrl(data: Record<string, unknown>, key: string): string | undefined {
@@ -47,6 +87,8 @@ function toFoodPlace(id: string, data: Record<string, unknown>): FoodPlace | nul
 export async function verifySessionCookie(): Promise<SessionUser | null> {
   if (isAuthBypassEnabled()) {
     logBypassOnce();
+    await connection();
+    await ensureBypassUser();
     return {
       email: TEST_BYPASS_EMAIL,
       name: TEST_BYPASS_NAME,
@@ -73,6 +115,7 @@ export async function verifySessionCookie(): Promise<SessionUser | null> {
 }
 
 export async function fetchFoodPlacesInitial(): Promise<FoodPlace[]> {
+  await connection();
   const db = getAdminDb();
   if (!db) {
     if (isAuthBypassEnabled()) {

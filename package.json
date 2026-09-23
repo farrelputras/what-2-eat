@@ -9,7 +9,7 @@
     "dev:portless": "portless shop next dev",
     "format": "oxfmt",
     "lint": "oxlint . && oxfmt --check",
-    "seed:foods": "tsx scripts/seed-foods.ts",
+    "seed:foods": "tsx --env-file=.env.local scripts/seed-foods.ts",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit"
   },

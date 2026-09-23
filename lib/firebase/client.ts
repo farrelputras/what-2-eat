@@ -6,6 +6,7 @@ import {
   getAuth,
   GoogleAuthProvider,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
   type User,
@@ -34,7 +35,7 @@ import {
 } from "@/lib/foods";
 import type { FoodPlace } from "@/lib/foods/types";
 
-import { TEST_BYPASS_EMAIL, TEST_BYPASS_NAME, TEST_BYPASS_UID } from "./index";
+import { TEST_BYPASS_EMAIL, TEST_BYPASS_PASSWORD } from "./index";
 
 const FOOD_PLACES_COLLECTION = "food_places";
 
@@ -132,22 +133,19 @@ function getFirebaseDb(): Firestore | null {
   return dbInstance;
 }
 
-function bypassUser(): User {
-  return {
-    displayName: TEST_BYPASS_NAME,
-    email: TEST_BYPASS_EMAIL,
-    photoURL: null,
-    uid: TEST_BYPASS_UID,
-  } as unknown as User;
-}
-
 export function subscribeAuthUser(
   next: (user: User | null) => void,
   options?: { bypass?: boolean },
 ): () => void {
   if (options?.bypass) {
-    next(bypassUser());
-    return () => {};
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      next(null);
+      return () => {};
+    }
+    const unsubscribe = onAuthStateChanged(auth, next);
+    signInWithEmailAndPassword(auth, TEST_BYPASS_EMAIL, TEST_BYPASS_PASSWORD).catch(() => {});
+    return unsubscribe;
   }
   const auth = getFirebaseAuth();
   if (!auth) {

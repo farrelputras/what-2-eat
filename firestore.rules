@@ -6,27 +6,43 @@ service cloud.firestore {
 
       allow create: if request.auth != null
         && request.resource.data.keys().hasOnly(
-          ["area", "name", "tags", "createdByUid", "createdAt", "updatedAt"])
+          ["area", "name", "tags", "createdByUid", "createdAt", "updatedAt", "instagramUrl", "tiktokUrl"])
         && request.resource.data.name is string
         && request.resource.data.name.size() >= 1
         && request.resource.data.name.size() <= 80
         && request.resource.data.area in ["batam", "malang", "surabaya"]
         && request.resource.data.tags.size() >= 1
         && request.resource.data.tags.size() <= 8
-        && request.resource.data.createdByUid == request.auth.uid;
+        && request.resource.data.createdByUid == request.auth.uid
+        && (!("instagramUrl" in request.resource.data)
+          || (request.resource.data.instagramUrl is string
+            && request.resource.data.instagramUrl.size() >= 1
+            && request.resource.data.instagramUrl.size() <= 300))
+        && (!("tiktokUrl" in request.resource.data)
+          || (request.resource.data.tiktokUrl is string
+            && request.resource.data.tiktokUrl.size() >= 1
+            && request.resource.data.tiktokUrl.size() <= 300));
 
       // Any logged-in user may edit any doc (shared catalog), but createdByUid
       // is immutable console forensics — never changed by an update.
       allow update: if request.auth != null
         && request.resource.data.keys().hasOnly(
-          ["area", "name", "tags", "createdByUid", "createdAt", "updatedAt"])
+          ["area", "name", "tags", "createdByUid", "createdAt", "updatedAt", "instagramUrl", "tiktokUrl"])
         && request.resource.data.name is string
         && request.resource.data.name.size() >= 1
         && request.resource.data.name.size() <= 80
         && request.resource.data.area in ["batam", "malang", "surabaya"]
         && request.resource.data.tags.size() >= 1
         && request.resource.data.tags.size() <= 8
-        && request.resource.data.createdByUid == resource.data.createdByUid;
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && (!("instagramUrl" in request.resource.data)
+          || (request.resource.data.instagramUrl is string
+            && request.resource.data.instagramUrl.size() >= 1
+            && request.resource.data.instagramUrl.size() <= 300))
+        && (!("tiktokUrl" in request.resource.data)
+          || (request.resource.data.tiktokUrl is string
+            && request.resource.data.tiktokUrl.size() >= 1
+            && request.resource.data.tiktokUrl.size() <= 300));
 
       allow delete: if request.auth != null;
     }
