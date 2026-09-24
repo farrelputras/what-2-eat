@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { toast } from "sonner";
 
@@ -155,7 +155,36 @@ export function FoodsCatalogClient({
   const [form, setForm] = useState<{ place: FoodPlace | null } | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
+  const [spinning, setSpinning] = useState(false);
+  const [cyclingName, setCyclingName] = useState<string | null>(null);
+  const [pulseId, setPulseId] = useState<string | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+  const spinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function prefersReducedMotion(): boolean {
+    return (
+      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+  }
+
+  function cancelSpin(): void {
+    if (spinTimeoutRef.current) {
+      clearTimeout(spinTimeoutRef.current);
+      spinTimeoutRef.current = null;
+    }
+    setSpinning(false);
+    setCyclingName(null);
+  }
+
+  useEffect(
+    () => () => {
+      if (spinTimeoutRef.current) clearTimeout(spinTimeoutRef.current);
+      if (pulseTimeoutRef.current) clearTimeout(pulseTimeoutRef.current);
+    },
+    [],
+  );
 
   useEffect(() => subscribeAuthUser((user) => setUid(user?.uid ?? null), { bypass }), [bypass]);
 
@@ -257,12 +286,17 @@ export function FoodsCatalogClient({
       servings: visible.known.servings,
     }).filter((place) => placeMatchesOpenFacets(place, visible.open));
   }, [foods, effectiveArea, search, visibleKey]);
+  const pool = useMemo(
+    () => filtered.filter((place) => !excludedIds.has(place.id)),
+    [filtered, excludedIds],
+  );
   const picked = pickedId ? (foods.find((place) => place.id === pickedId) ?? null) : null;
 
   function toggleIn(setter: (update: (prev: string[]) => string[]) => void, value: string): void {
     setter((prev) =>
       prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value],
     );
+    cancelSpin();
     setPickedId(null);
   }
 
@@ -274,24 +308,81 @@ export function FoodsCatalogClient({
         : [...current, value];
       return { ...prev, [facet]: next };
     });
+    cancelSpin();
     setPickedId(null);
   }
 
   function handleSearch(value: string): void {
     setSearch(value);
+    cancelSpin();
     setPickedId(null);
   }
 
   function handleArea(value: string): void {
     setArea(value);
+    cancelSpin();
     setPickedId(null);
   }
 
   function handleShuffle(): void {
-    setPickedId(pickRandomFood(filtered)?.id ?? null);
+    if (spinning || pool.length === 0) return;
+    if (pool.length === 1 || prefersReducedMotion()) {
+      setPickedId(pickRandomFood(pool)?.id ?? null);
+      return;
+    }
+    const snapshot = [...pool];
+    cancelSpin();
+    setPickedId(null);
+    setSpinning(true);
+    const totalTicks = 12;
+    let tick = 0;
+    function scheduleNext(): void {
+      const delay = Math.min(55 * Math.pow(1.18, tick), 230);
+      spinTimeoutRef.current = setTimeout(() => {
+        tick += 1;
+        if (tick >= totalTicks) {
+          spinTimeoutRef.current = null;
+          setCyclingName(null);
+          setSpinning(false);
+          setPickedId(pickRandomFood(snapshot)?.id ?? null);
+          return;
+        }
+        setCyclingName(pickRandomFood(snapshot)?.name ?? null);
+        scheduleNext();
+      }, delay);
+    }
+    setCyclingName(pickRandomFood(snapshot)?.name ?? null);
+    scheduleNext();
+  }
+
+  function toggleExclude(id: string): void {
+    cancelSpin();
+    if (pickedId === id) setPickedId(null);
+    setExcludedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    if (prefersReducedMotion()) return;
+    if (pulseTimeoutRef.current) clearTimeout(pulseTimeoutRef.current);
+    setPulseId(id);
+    pulseTimeoutRef.current = setTimeout(() => setPulseId(null), 150);
+  }
+
+  function handleSelectAll(): void {
+    cancelSpin();
+    setExcludedIds(new Set());
+  }
+
+  function handleClearPool(): void {
+    cancelSpin();
+    setPickedId(null);
+    setExcludedIds(new Set(filtered.map((place) => place.id)));
   }
 
   function handleReset(): void {
+    cancelSpin();
     setArea("all");
     setPickedId(null);
     setSearch("");
@@ -302,6 +393,7 @@ export function FoodsCatalogClient({
     setSelectedOrigins([]);
     setSelectedHealthStyles([]);
     setSelectedOpen({});
+    setExcludedIds(new Set());
   }
 
   function openCreate(event: MouseEvent<HTMLButtonElement>): void {
@@ -348,6 +440,12 @@ export function FoodsCatalogClient({
       try {
         await removePlaceRemote(place.id);
         if (pickedId === place.id) setPickedId(null);
+        setExcludedIds((prev) => {
+          if (!prev.has(place.id)) return prev;
+          const next = new Set(prev);
+          next.delete(place.id);
+          return next;
+        });
         setConfirmId(null);
         toast.success("Place removed.");
       } catch {
@@ -433,12 +531,32 @@ export function FoodsCatalogClient({
 
         <div className="flex flex-wrap items-center gap-4">
           <p className="text-sm text-muted-foreground" aria-live="polite">
-            {filtered.length} of {foods.length} places
+            {filtered.length} of {foods.length} places · {pool.length} in shuffle pool
           </p>
           {isFiltered && (
             <Button onClick={handleReset} size="sm" variant="ghost">
               Reset filters
             </Button>
+          )}
+          {filtered.length > 0 && (
+            <>
+              <Button
+                disabled={excludedIds.size === 0}
+                onClick={handleSelectAll}
+                size="sm"
+                variant="ghost"
+              >
+                Select all
+              </Button>
+              <Button
+                disabled={pool.length === 0}
+                onClick={handleClearPool}
+                size="sm"
+                variant="ghost"
+              >
+                Clear pool
+              </Button>
+            </>
           )}
           <Button onClick={openCreate} size="sm" variant="outline">
             <Plus />
@@ -449,15 +567,34 @@ export function FoodsCatalogClient({
 
       <div className="grid gap-2.5">
         <Button
-          disabled={filtered.length === 0}
+          disabled={pool.length === 0 || spinning}
           onClick={handleShuffle}
           variant="secondary"
           className="w-fit"
         >
-          Pick randomly from these results
+          {spinning ? "Shuffling…" : "Pick randomly from these results"}
         </Button>
-        {picked && (
-          <div className="rounded-lg border bg-card p-5 grid gap-2.5" aria-live="polite">
+        {pool.length === 0 && filtered.length > 0 && (
+          <p className="text-sm text-muted-foreground">Select at least 1 place to shuffle</p>
+        )}
+        {spinning && (
+          <div
+            className="rounded-lg border bg-card p-5 grid gap-2.5 min-h-44"
+            role="status"
+            aria-label="Shuffling places"
+          >
+            <p className="text-sm text-muted-foreground">Shuffling…</p>
+            <p className="text-2xl font-semibold" aria-hidden="true">
+              {cyclingName ?? "…"}
+            </p>
+          </div>
+        )}
+        {!spinning && picked && (
+          <div
+            key={picked.id}
+            className="rounded-lg border bg-card p-5 grid gap-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none"
+            aria-live="polite"
+          >
             <p className="text-sm text-muted-foreground">Your random pick:</p>
             <p className="text-2xl font-semibold">{picked.name}</p>
             <FoodBadges place={picked} />
@@ -474,7 +611,12 @@ export function FoodsCatalogClient({
               tiktokUrl={picked.tiktokUrl}
             />
             <div>
-              <Button onClick={handleShuffle} size="sm" variant="outline">
+              <Button
+                disabled={pool.length === 0 || spinning}
+                onClick={handleShuffle}
+                size="sm"
+                variant="outline"
+              >
                 Shuffle again
               </Button>
             </div>
@@ -491,61 +633,82 @@ export function FoodsCatalogClient({
         </div>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((place) => (
-            <li key={place.id} className="rounded-lg border bg-card p-5 grid gap-2.5 content-start">
-              <div className="flex items-start justify-between gap-2.5">
-                <p className="font-medium">{place.name}</p>
-                <div className="flex shrink-0 gap-1">
-                  <Button
-                    aria-label={`Edit ${place.name}`}
-                    onClick={(event) => openEdit(event, place)}
-                    size="icon-sm"
-                    variant="ghost"
-                  >
-                    <Pencil />
-                  </Button>
-                  <Button
-                    aria-label={`Delete ${place.name}`}
-                    onClick={() => handleDeleteClick(place)}
-                    size="icon-sm"
-                    variant="ghost"
-                  >
-                    <Trash2 />
-                  </Button>
-                </div>
-              </div>
-              <FoodBadges place={place} />
-              <div className="flex flex-wrap gap-2.5">
-                {place.areas.map((item) => (
-                  <Badge key={item} variant="outline">
-                    {formatArea(item)}
-                  </Badge>
-                ))}
-              </div>
-              <FoodSocialLinks
-                instagramUrl={place.instagramUrl}
-                placeName={place.name}
-                tiktokUrl={place.tiktokUrl}
-              />
-              {confirmId === place.id && (
-                <div className="grid gap-2.5 rounded-md border border-destructive/50 p-2.5">
-                  <p className="text-sm">Delete {place.name}?</p>
-                  <div className="flex gap-2.5">
-                    <Button onClick={() => setConfirmId(null)} size="sm" variant="outline">
-                      Cancel
+          {filtered.map((place) => {
+            const inPool = !excludedIds.has(place.id);
+            const pulsing = pulseId === place.id;
+            return (
+              <li
+                key={place.id}
+                className={`rounded-lg border bg-card p-5 grid gap-2.5 content-start transition-all ${inPool ? "" : "opacity-60 saturate-50"} ${inPool ? "ring-1 ring-primary/20" : ""}`}
+              >
+                <div className="flex items-start justify-between gap-2.5">
+                  <p className="font-medium">{place.name}</p>
+                  <div className="flex shrink-0 gap-1">
+                    <Button
+                      aria-label={
+                        inPool
+                          ? `Remove ${place.name} from shuffle pool`
+                          : `Add ${place.name} to shuffle pool`
+                      }
+                      aria-pressed={inPool}
+                      onClick={() => toggleExclude(place.id)}
+                      size="icon-sm"
+                      variant={inPool ? "secondary" : "outline"}
+                      className={`transition-transform motion-reduce:transition-none ${pulsing ? "scale-110 motion-reduce:scale-100" : ""} ${inPool ? "ring-1 ring-primary/30" : ""}`}
+                    >
+                      {inPool ? <Check /> : <Plus />}
                     </Button>
                     <Button
-                      onClick={() => handleDeleteClick(place)}
-                      size="sm"
-                      variant="destructive"
+                      aria-label={`Edit ${place.name}`}
+                      onClick={(event) => openEdit(event, place)}
+                      size="icon-sm"
+                      variant="ghost"
                     >
-                      Yes, delete
+                      <Pencil />
+                    </Button>
+                    <Button
+                      aria-label={`Delete ${place.name}`}
+                      onClick={() => handleDeleteClick(place)}
+                      size="icon-sm"
+                      variant="ghost"
+                    >
+                      <Trash2 />
                     </Button>
                   </div>
                 </div>
-              )}
-            </li>
-          ))}
+                <FoodBadges place={place} />
+                <div className="flex flex-wrap gap-2.5">
+                  {place.areas.map((item) => (
+                    <Badge key={item} variant="outline">
+                      {formatArea(item)}
+                    </Badge>
+                  ))}
+                </div>
+                <FoodSocialLinks
+                  instagramUrl={place.instagramUrl}
+                  placeName={place.name}
+                  tiktokUrl={place.tiktokUrl}
+                />
+                {confirmId === place.id && (
+                  <div className="grid gap-2.5 rounded-md border border-destructive/50 p-2.5">
+                    <p className="text-sm">Delete {place.name}?</p>
+                    <div className="flex gap-2.5">
+                      <Button onClick={() => setConfirmId(null)} size="sm" variant="outline">
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => handleDeleteClick(place)}
+                        size="sm"
+                        variant="destructive"
+                      >
+                        Yes, delete
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 
