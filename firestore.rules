@@ -1,8 +1,18 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isValidFacetList(values, allowed, maxSize) {
-      return values is list && values.size() <= maxSize && values.hasOnly(allowed);
+    // Facet values are open vocabulary: any 1-24 char string. Rules has no
+    // per-element string predicate, so values are checked index-wise (the
+    // largest facet cap is 5, which covers the smaller facets too).
+    function facetValueAtOk(values, i) {
+      return values.size() <= i
+        || (values[i] is string && values[i].size() >= 1 && values[i].size() <= 24);
+    }
+    function isValidFacetValues(values, maxSize) {
+      return values is list && values.size() <= maxSize
+        && facetValueAtOk(values, 0) && facetValueAtOk(values, 1)
+        && facetValueAtOk(values, 2) && facetValueAtOk(values, 3)
+        && facetValueAtOk(values, 4);
     }
     // Rules has no per-element string predicate, so pending is checked index-wise.
     function pendingAtOk(values, i) {
@@ -27,12 +37,12 @@ service cloud.firestore {
     function isValidTags(tags) {
       return tags is map
         && tags.keys().hasOnly(["menus", "servings", "ingredients", "origins", "priceTier", "healthStyle", "pending"])
-        && (!("menus" in tags) || isValidFacetList(tags.menus, ["burger", "pizza", "pasta", "sandwich", "sushi", "rice-bowl", "noodle-bowl", "soup", "porridge", "salad", "fried-chicken", "grill", "dessert", "bakery", "coffee", "beverage"], 3))
-        && (!("servings" in tags) || isValidFacetList(tags.servings, ["meal", "snack"], 2))
-        && (!("ingredients" in tags) || isValidFacetList(tags.ingredients, ["rice", "noodles", "bread", "potato", "porridge", "none", "chicken", "beef", "seafood", "egg", "plant", "pork", "mixed"], 5))
-        && (!("origins" in tags) || isValidFacetList(tags.origins, ["indonesian", "chinese", "japanese", "korean", "western", "middle-eastern", "southeast-asian", "mixed"], 3))
-        && (!("priceTier" in tags) || tags.priceTier in ["budget", "regular", "premium", "splurge"])
-        && (!("healthStyle" in tags) || tags.healthStyle in ["comfort", "everyday", "fresh"])
+        && (!("menus" in tags) || isValidFacetValues(tags.menus, 3))
+        && (!("servings" in tags) || isValidFacetValues(tags.servings, 2))
+        && (!("ingredients" in tags) || isValidFacetValues(tags.ingredients, 5))
+        && (!("origins" in tags) || isValidFacetValues(tags.origins, 3))
+        && (!("priceTier" in tags) || (tags.priceTier is string && tags.priceTier.size() >= 1 && tags.priceTier.size() <= 24))
+        && (!("healthStyle" in tags) || (tags.healthStyle is string && tags.healthStyle.size() >= 1 && tags.healthStyle.size() <= 24))
         && (!("pending" in tags) || isValidPending(tags.pending))
         && facetTotal(tags) <= 8;
     }
@@ -72,8 +82,9 @@ service cloud.firestore {
 
       allow delete: if request.auth != null;
     }
-    // Tag registry: UI vocab + synonyms. food_places keeps plain strings and
-    // its own hardcoded validators; this collection never gates reads.
+    // Tag registry: UI vocab + synonyms. food_places keeps plain strings with
+    // open-vocabulary facet values (structural caps only); this collection
+    // never gates reads.
     function tagSynonymAtOk(values, i) {
       return values.size() <= i
         || (values[i] is string && values[i].size() >= 1 && values[i].size() <= 24);

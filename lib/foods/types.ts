@@ -63,12 +63,14 @@ export const HEALTH_STYLE_VOCAB = ["comfort", "everyday", "fresh"] as const;
 export type HealthStyle = (typeof HEALTH_STYLE_VOCAB)[number];
 
 export interface FoodTags {
-  healthStyle?: HealthStyle;
+  // Open vocabulary (registry values included): any 1-24 char string.
+  // The *Value union types below still describe the built-in defaults.
+  healthStyle?: string;
   ingredients: string[];
   menus: string[];
   origins: string[];
   pending: string[];
-  priceTier?: PriceTier;
+  priceTier?: string;
   servings: string[];
 }
 

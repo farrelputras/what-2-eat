@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { FoodPlace, FoodTags, HealthStyle, PriceTier } from "./types";
+import type { FoodPlace, FoodTags } from "./types";
 import {
   HEALTH_STYLE_VOCAB,
   INGREDIENT_VOCAB,
@@ -61,14 +61,19 @@ export const MAX_FOOD_URL_LENGTH = 300;
 
 export const FOOD_AREAS = ["batam", "malang", "surabaya"] as const;
 
+// Facet values are open vocabulary (registry values included): any 1-24
+// char string, mirroring the Firestore rules. Placement into facets stays in
+// mapFreeTextToTags; this schema only guards shape and bounds.
+const facetValueSchema = z.string().min(1).max(MAX_PENDING_TAG_LENGTH);
+
 const foodTagsSchema = z.object({
-  healthStyle: z.enum(HEALTH_STYLE_VOCAB).optional(),
-  ingredients: z.enum(INGREDIENT_VOCAB).array().max(MAX_INGREDIENTS_PER_PLACE),
-  menus: z.enum(MENU_VOCAB).array().max(MAX_MENUS_PER_PLACE),
-  origins: z.enum(ORIGIN_VOCAB).array().max(MAX_ORIGINS_PER_PLACE),
-  pending: z.string().min(1).max(MAX_PENDING_TAG_LENGTH).array().max(MAX_PENDING_PER_PLACE),
-  priceTier: z.enum(PRICE_TIER_VOCAB).optional(),
-  servings: z.enum(SERVING_VOCAB).array().max(MAX_SERVINGS_PER_PLACE),
+  healthStyle: facetValueSchema.optional(),
+  ingredients: facetValueSchema.array().max(MAX_INGREDIENTS_PER_PLACE),
+  menus: facetValueSchema.array().max(MAX_MENUS_PER_PLACE),
+  origins: facetValueSchema.array().max(MAX_ORIGINS_PER_PLACE),
+  pending: facetValueSchema.array().max(MAX_PENDING_PER_PLACE),
+  priceTier: facetValueSchema.optional(),
+  servings: facetValueSchema.array().max(MAX_SERVINGS_PER_PLACE),
 });
 
 const foodInputSchema = z
@@ -110,15 +115,14 @@ export function formatFacetValue(value: string): string {
     .join(" ");
 }
 
-function normalizeMulti(values: unknown, vocab: readonly string[], cap: number): string[] {
+function normalizeMulti(values: unknown, cap: number): string[] {
   if (!Array.isArray(values)) return [];
-  const allowed = new Set(vocab);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of values) {
     if (typeof raw !== "string") continue;
     const value = raw.trim().toLowerCase();
-    if (value === "" || !allowed.has(value) || seen.has(value)) continue;
+    if (value === "" || seen.has(value)) continue;
     seen.add(value);
     out.push(value);
     if (out.length >= cap) break;
@@ -126,11 +130,10 @@ function normalizeMulti(values: unknown, vocab: readonly string[], cap: number):
   return out;
 }
 
-function normalizeSingle(value: unknown, vocab: readonly string[]): string | undefined {
+function normalizeSingle(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim().toLowerCase();
-  if (trimmed === "") return undefined;
-  return (vocab as readonly string[]).includes(trimmed) ? trimmed : undefined;
+  return trimmed === "" ? undefined : trimmed;
 }
 
 function normalizePending(values: unknown): string[] {
@@ -151,16 +154,16 @@ function normalizePending(values: unknown): string[] {
 export function normalizeFoodTags(input: unknown): FoodTags {
   const data =
     typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
-  const priceTier = normalizeSingle(data["priceTier"], PRICE_TIER_VOCAB);
-  const healthStyle = normalizeSingle(data["healthStyle"], HEALTH_STYLE_VOCAB);
+  const priceTier = normalizeSingle(data["priceTier"]);
+  const healthStyle = normalizeSingle(data["healthStyle"]);
   return {
-    ...(healthStyle ? { healthStyle: healthStyle as HealthStyle } : {}),
-    ingredients: normalizeMulti(data["ingredients"], INGREDIENT_VOCAB, MAX_INGREDIENTS_PER_PLACE),
-    menus: normalizeMulti(data["menus"], MENU_VOCAB, MAX_MENUS_PER_PLACE),
-    origins: normalizeMulti(data["origins"], ORIGIN_VOCAB, MAX_ORIGINS_PER_PLACE),
+    ...(healthStyle ? { healthStyle } : {}),
+    ingredients: normalizeMulti(data["ingredients"], MAX_INGREDIENTS_PER_PLACE),
+    menus: normalizeMulti(data["menus"], MAX_MENUS_PER_PLACE),
+    origins: normalizeMulti(data["origins"], MAX_ORIGINS_PER_PLACE),
     pending: normalizePending(data["pending"]),
-    ...(priceTier ? { priceTier: priceTier as PriceTier } : {}),
-    servings: normalizeMulti(data["servings"], SERVING_VOCAB, MAX_SERVINGS_PER_PLACE),
+    ...(priceTier ? { priceTier } : {}),
+    servings: normalizeMulti(data["servings"], MAX_SERVINGS_PER_PLACE),
   };
 }
 
@@ -271,8 +274,8 @@ export function mapFreeTextToTags(
   const ingredients: string[] = [];
   const origins: string[] = [];
   const pending: string[] = [];
-  let priceTier: PriceTier | undefined;
-  let healthStyle: HealthStyle | undefined;
+  let priceTier: string | undefined;
+  let healthStyle: string | undefined;
 
   function addMulti(list: string[], value: string): void {
     if (!list.includes(value)) list.push(value);
@@ -289,8 +292,8 @@ export function mapFreeTextToTags(
     else if (facet === "servings") addMulti(servings, value);
     else if (facet === "ingredients") addMulti(ingredients, value);
     else if (facet === "origins") addMulti(origins, value);
-    else if (facet === "priceTier") priceTier = value as PriceTier;
-    else healthStyle = value as HealthStyle;
+    else if (facet === "priceTier") priceTier = value;
+    else healthStyle = value;
   }
 
   for (const raw of tokens) {
@@ -449,13 +452,13 @@ export function validateFoodInput(
         errors.areas = "Select at least 1 area";
       } else if (field === "tags" && !errors.tags) {
         const sub = issue.path[1];
-        if (sub === "menus") errors.tags = "Maximum 3 menu forms";
+        if (issue.path.length > 2 || sub === "priceTier" || sub === "healthStyle") {
+          errors.tags = "Each tag must be 1-24 characters";
+        } else if (sub === "menus") errors.tags = "Maximum 3 menu forms";
         else if (sub === "servings") errors.tags = "Maximum 2 servings";
         else if (sub === "ingredients") errors.tags = "Maximum 5 ingredients";
         else if (sub === "origins") errors.tags = "Maximum 3 origins";
         else if (sub === "pending") errors.tags = "Each tag must be 1-24 characters (max 8)";
-        else if (sub === "priceTier") errors.tags = "Invalid price tier";
-        else if (sub === "healthStyle") errors.tags = "Invalid style";
       } else if (field === "instagramUrl" && !errors.instagramUrl) {
         errors.instagramUrl = `Link must be at most ${MAX_FOOD_URL_LENGTH} characters`;
       } else if (field === "tiktokUrl" && !errors.tiktokUrl) {
