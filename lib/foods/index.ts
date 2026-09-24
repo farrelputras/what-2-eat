@@ -164,14 +164,8 @@ export function normalizeFoodTags(input: unknown): FoodTags {
   };
 }
 
-const DISH_TO_MENU: Record<string, string> = {
-  bakso: "soup",
-  rawon: "soup",
-  soto: "soup",
-};
-
 // Registry overrides are advisory: when omitted, every rule below behaves
-// exactly as the built-in vocabs + DISH_TO_MENU describe.
+// exactly as the built-in vocabs describe.
 export interface TagRegistryOverride {
   suggestionsByFacet?: ReadonlyMap<string, string[]>;
   synonymToTag?: ReadonlyMap<string, { facet: string; value: string }>;
@@ -231,11 +225,6 @@ function facetForValue(value: string): keyof Omit<FoodTags, "pending"> | undefin
     if (VOCAB_BY_FACET[facet].has(value)) return facet;
   }
   return undefined;
-}
-
-function legacySynonym(token: string): { facet: string; value: string } | undefined {
-  const parent = DISH_TO_MENU[token];
-  return parent ? { facet: "menus", value: parent } : undefined;
 }
 
 function registryFacetForPrefix(
@@ -317,7 +306,7 @@ export function mapFreeTextToTags(
       } else addPending(token);
       continue;
     }
-    const dishParent = registry?.synonymToTag?.get(token) ?? legacySynonym(token);
+    const dishParent = registry?.synonymToTag?.get(token);
     if (dishParent) {
       if (isKnownTagFacet(dishParent.facet)) assignResolved(dishParent.facet, dishParent.value);
       else addPending(token);

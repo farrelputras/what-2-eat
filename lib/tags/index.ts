@@ -18,12 +18,6 @@ const FACET_PATTERN = /^[a-z][A-Za-z0-9]{0,23}$/;
 
 const VALUE_PATTERN = /^[a-z0-9][a-z0-9-]{0,23}$/;
 
-const LEGACY_DISH_TO_MENU: Record<string, string> = {
-  bakso: "soup",
-  rawon: "soup",
-  soto: "soup",
-};
-
 const TAG_DOC_KEYS = new Set([
   "createdAt",
   "deprecated",
@@ -176,9 +170,6 @@ export function buildRegistryMaps(tags: TagDoc[]): RegistryMaps {
   }
   if (valueToFacet.get("mixed") !== "ingredients" && suggestions.get("ingredients")?.has("mixed")) {
     valueToFacet.set("mixed", "ingredients");
-  }
-  for (const [dish, parent] of Object.entries(LEGACY_DISH_TO_MENU)) {
-    if (!synonymToTag.has(dish)) synonymToTag.set(dish, { facet: "menus", value: parent });
   }
 
   const suggestionsByFacet = new Map<string, string[]>();

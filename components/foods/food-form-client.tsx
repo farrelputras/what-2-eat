@@ -25,16 +25,7 @@ import {
   type FoodInputErrors,
   type TagRegistryOverride,
 } from "@/lib/foods";
-import {
-  HEALTH_STYLE_VOCAB,
-  INGREDIENT_VOCAB,
-  MENU_VOCAB,
-  ORIGIN_VOCAB,
-  PRICE_TIER_VOCAB,
-  SERVING_VOCAB,
-  type FoodPlace,
-  type FoodTags,
-} from "@/lib/foods/types";
+import type { FoodPlace, FoodTags } from "@/lib/foods/types";
 import { buildRegistryMaps } from "@/lib/tags";
 import type { TagDoc } from "@/lib/tags/types";
 
@@ -51,46 +42,12 @@ function formatArea(area: string): string {
   return area.charAt(0).toUpperCase() + area.slice(1);
 }
 
-const SUGGESTION_GROUPS = [
-  { facet: "Menu", prefix: "menu", values: MENU_VOCAB },
-  { facet: "Price", prefix: "price", values: PRICE_TIER_VOCAB },
-  { facet: "Serving", prefix: "serving", values: SERVING_VOCAB },
-  { facet: "Ingredient", prefix: "ingredient", values: INGREDIENT_VOCAB },
-  { facet: "Origin", prefix: "origin", values: ORIGIN_VOCAB },
-  { facet: "Style", prefix: "style", values: HEALTH_STYLE_VOCAB },
-] as const;
-
-const DISH_SUGGESTIONS = [
-  { facet: "Menu", label: "Soto (menu)", token: "soto" },
-  { facet: "Menu", label: "Bakso (menu)", token: "bakso" },
-  { facet: "Menu", label: "Rawon (menu)", token: "rawon" },
-];
-
 interface TagSuggestion {
   facet: string;
   label: string;
   token: string;
 }
 
-function buildTagSuggestions(): TagSuggestion[] {
-  const counts = new Map<string, number>();
-  for (const group of SUGGESTION_GROUPS) {
-    for (const value of group.values) counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-  const out: TagSuggestion[] = [...DISH_SUGGESTIONS];
-  for (const group of SUGGESTION_GROUPS) {
-    for (const value of group.values) {
-      out.push({
-        facet: group.facet,
-        label: `${formatFacetValue(value)} (${group.facet})`,
-        token: (counts.get(value) ?? 0) > 1 ? `${group.prefix}:${value}` : value,
-      });
-    }
-  }
-  return out;
-}
-
-const TAG_SUGGESTIONS = buildTagSuggestions();
 const MAX_VISIBLE_SUGGESTIONS = 8;
 
 const REGISTRY_FACET_LABELS: Record<string, string> = {
@@ -111,9 +68,9 @@ const REGISTRY_FACET_PREFIXES: Record<string, string> = {
   servings: "serving",
 };
 
-// Registry suggestions replace the built-in wall when the registry is present:
-// non-deprecated values grouped by facet plus synonym shortcuts. Empty or
-// unreachable registry falls back to TAG_SUGGESTIONS.
+// Suggestions come only from the registry: non-deprecated values grouped by
+// facet plus synonym shortcuts. Empty or unreachable registry means no
+// suggestions (free text still reaches pending via Add "<text>").
 function buildRegistrySuggestions(maps: TagRegistryOverride): TagSuggestion[] {
   const byFacet = maps.suggestionsByFacet ?? new Map<string, string[]>();
   const synonyms = maps.synonymToTag ?? new Map<string, { facet: string; value: string }>();
@@ -394,7 +351,7 @@ export function FoodFormDialog({
     [registryTags],
   );
   const suggestions = useMemo(
-    () => (registry ? buildRegistrySuggestions(registry) : TAG_SUGGESTIONS),
+    () => (registry ? buildRegistrySuggestions(registry) : []),
     [registry],
   );
   const [tokens, setTokens] = useState<string[]>(() =>
