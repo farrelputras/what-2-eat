@@ -66,6 +66,36 @@ export function normalizeTagValue(value: string): string {
   return value.trim().toLowerCase();
 }
 
+// Human input → canonical registry value: "Rice Bowl" becomes "rice-bowl".
+// Spaces and underscores fold to hyphens, the rest is lowercased and stripped
+// to [a-z0-9-]. Returns "" when nothing valid remains; length is left for
+// isValidTagValue so over-long input errors instead of silently truncating.
+export function parseTagValue(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+// Human input → canonical facet: "Taste" becomes "taste", "Price Tier"
+// becomes "priceTier". Separators camelCase the next word; existing camelCase
+// passes through untouched. Returns "" when nothing valid remains.
+export function parseTagFacet(raw: string): string {
+  const parts = raw
+    .trim()
+    .split(/[\s\-_]+/)
+    .map((part) => part.replace(/[^A-Za-z0-9]/g, ""))
+    .filter((part) => part !== "");
+  if (parts.length === 0) return "";
+  const [first, ...rest] = parts as [string, ...string[]];
+  const head = first.charAt(0).toLowerCase() + first.slice(1);
+  const tail = rest.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("");
+  return head + tail;
+}
+
 function toMillis(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.getTime();

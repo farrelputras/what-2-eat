@@ -37,7 +37,7 @@ import {
   type FoodInput,
 } from "@/lib/foods";
 import type { FoodPlace } from "@/lib/foods/types";
-import { normalizeTagDoc, replaceTagValueInPlace } from "@/lib/tags";
+import { normalizeTagDoc, parseTagFacet, parseTagValue, replaceTagValueInPlace } from "@/lib/tags";
 import { tagDocId } from "@/lib/tags/types";
 import type { TagDoc } from "@/lib/tags/types";
 
@@ -338,8 +338,8 @@ export async function createTagDoc(
 ): Promise<void> {
   const db = getFirebaseDb();
   if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
-  const facet = input.facet.trim();
-  const value = input.value.trim().toLowerCase();
+  const facet = parseTagFacet(input.facet);
+  const value = parseTagValue(input.value);
   await setDoc(doc(db, TAGS_COLLECTION, tagDocId(facet, value)), {
     createdAt: serverTimestamp(),
     deprecated: false,
@@ -354,7 +354,7 @@ export async function createTagDoc(
 export async function addTagSynonym(id: string, synonym: string, uid: string): Promise<void> {
   const db = getFirebaseDb();
   if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
-  const value = synonym.trim().toLowerCase();
+  const value = parseTagValue(synonym);
   if (value === "") throw new Error("Synonym must not be empty.");
   await updateDoc(doc(db, TAGS_COLLECTION, id), {
     synonyms: arrayUnion(value),

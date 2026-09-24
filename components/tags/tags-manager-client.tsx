@@ -23,7 +23,8 @@ import {
   findValueCollision,
   isValidTagFacet,
   isValidTagValue,
-  normalizeTagValue,
+  parseTagFacet,
+  parseTagValue,
   previewMerge,
   type RegistryMaps,
 } from "@/lib/tags";
@@ -60,11 +61,12 @@ function validateFacetValue(
   maps: RegistryMaps,
   existingIds: ReadonlySet<string>,
 ): { facet: string; value: string } | string {
-  const facet = facetRaw.trim();
-  const value = normalizeTagValue(valueRaw);
+  const facet = parseTagFacet(facetRaw);
+  const value = parseTagValue(valueRaw);
   if (facet === "") return "Pick a facet.";
   if (!isValidTagFacet(facet)) return "Facet must be 1–24 characters, starting with a letter.";
-  if (!isValidTagValue(value)) return "Value must be 1–24 characters: lowercase, digits, hyphen.";
+  if (!isValidTagValue(value))
+    return "Value must be 1–24 characters: letters, digits, spaces, hyphens (Rice Bowl → rice-bowl).";
   const collision = findValueCollision(value, facet, maps.valueToFacet);
   if (collision) return `"${value}" already lives in ${facetLabel(collision)}.`;
   if (existingIds.has(tagDocId(facet, value)))
@@ -109,9 +111,9 @@ function SynonymBox({ doc, uid }: { doc: TagDoc; uid: string | null }) {
 
   async function handleAdd(): Promise<void> {
     if (!requireUid(uid)) return;
-    const value = normalizeTagValue(synonym);
+    const value = parseTagValue(synonym);
     if (!isValidTagValue(value)) {
-      toast.error("Synonym must be 1–24 characters: lowercase, digits, hyphen.");
+      toast.error("Synonym must be 1–24 characters: letters, digits, spaces, hyphens.");
       return;
     }
     if (doc.synonyms.includes(value)) {
@@ -162,20 +164,20 @@ function MergeBox({ foods, maps, sourceFacet, sourceValue, tags, uid }: MergeBox
   const [confirmed, setConfirmed] = useState(false);
   const [applying, setApplying] = useState(false);
 
-  const target = normalizeTagValue(targetValue);
-  const targetId = target === "" ? "" : tagDocId(targetFacet.trim(), target);
+  const target = parseTagValue(targetValue);
+  const parsedTargetFacet = parseTagFacet(targetFacet);
+  const targetId = target === "" ? "" : tagDocId(parsedTargetFacet, target);
   const sourceId = tagDocId(sourceFacet, sourceValue);
   const preview = useMemo(() => {
-    if (!open || target === "" || !isValidTagValue(target) || targetFacet.trim() === "")
-      return null;
+    if (!open || target === "" || !isValidTagValue(target) || parsedTargetFacet === "") return null;
     return previewMerge({
       places: foods,
       sourceFacet,
       sourceValue,
-      targetFacet: targetFacet.trim(),
+      targetFacet: parsedTargetFacet,
       targetValue: target,
     });
-  }, [foods, open, sourceFacet, sourceValue, target, targetFacet]);
+  }, [foods, open, sourceFacet, sourceValue, target, parsedTargetFacet]);
   const needsConfirm = (preview?.count ?? 0) > 0;
   const sameTarget = targetId !== "" && targetId === sourceId;
 
@@ -186,7 +188,7 @@ function MergeBox({ foods, maps, sourceFacet, sourceValue, tags, uid }: MergeBox
       toast.error("Pick a different target to rename or merge.");
       return;
     }
-    const facet = targetFacet.trim();
+    const facet = parsedTargetFacet;
     if (!isValidTagFacet(facet)) {
       toast.error("Facet must be 1–24 characters, starting with a letter.");
       return;
@@ -413,7 +415,7 @@ function AddValueBox({
         aria-label={`New ${facetLabel(facet)} value`}
         className="w-48"
         onChange={(event) => setValue(event.target.value)}
-        placeholder={`New value, e.g. ${facet === "menus" ? "brunch" : "…"}`}
+        placeholder={`New value, e.g. ${facet === "menus" ? "Rice Bowl" : "…"}`}
         value={value}
       />
       <Button disabled={saving} onClick={handleAdd} size="sm" variant="outline">
