@@ -320,6 +320,53 @@ export function placeMatchesOpenFacets(
   return true;
 }
 
+// Local batch helper for hard delete: drop the value from its storage.
+// Returns null when the place does not hold the value.
+export function removeTagValueFromPlace(
+  tags: FoodTags,
+  facet: string,
+  value: string,
+): FoodTags | null {
+  const target = normalizeTagValue(value);
+  if (target === "") return null;
+  let touched = false;
+
+  function removeFromList(list: string[]): string[] {
+    if (!list.some((item) => normalizeTagValue(item) === target)) return list;
+    touched = true;
+    return list.filter((item) => normalizeTagValue(item) !== target);
+  }
+
+  function removeSingle(single: string | undefined): string | undefined {
+    if (single === undefined || normalizeTagValue(single) !== target) return single;
+    touched = true;
+    return undefined;
+  }
+
+  const holder: FoodTags = {
+    ingredients: tags.ingredients,
+    menus: tags.menus,
+    origins: tags.origins,
+    pending: tags.pending,
+    servings: tags.servings,
+  };
+  if (tags.healthStyle !== undefined) holder.healthStyle = tags.healthStyle;
+  if (tags.priceTier !== undefined) holder.priceTier = tags.priceTier;
+
+  if (facet === "menus") holder.menus = removeFromList(tags.menus);
+  else if (facet === "servings") holder.servings = removeFromList(tags.servings);
+  else if (facet === "ingredients") holder.ingredients = removeFromList(tags.ingredients);
+  else if (facet === "origins") holder.origins = removeFromList(tags.origins);
+  else if (facet === "priceTier")
+    holder.priceTier = removeSingle(tags.priceTier) as FoodTags["priceTier"];
+  else if (facet === "healthStyle")
+    holder.healthStyle = removeSingle(tags.healthStyle) as FoodTags["healthStyle"];
+  else holder.pending = removeFromList(tags.pending);
+
+  if (!touched) return null;
+  return holder;
+}
+
 // Local batch helper for rename/merge: drop the source value from its storage
 // and add the target value to its facet's storage. Returns null when the place
 // does not hold the source value.

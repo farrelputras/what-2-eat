@@ -1,16 +1,27 @@
 "use client";
 
+import { Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   addTagSynonym as addTagSynonymRemote,
   applyTagMergeToPlaces,
   createTagDoc as createTagDocRemote,
+  deleteTagDoc as deleteTagDocRemote,
   setTagDeprecated as setTagDeprecatedRemote,
+  stripTagFromPlaces as stripTagFromPlacesRemote,
   subscribeAuthUser,
   subscribeFoodPlaces,
   subscribeTags,
@@ -285,6 +296,74 @@ function RenameBox({ foods, maps, sourceFacet, sourceValue, tags, uid }: RenameB
   );
 }
 
+interface DeleteBoxProps {
+  count: number;
+  examples: string[];
+  sourceFacet: string;
+  sourceValue: string;
+  uid: string | null;
+}
+
+function DeleteBox({ count, examples, sourceFacet, sourceValue, uid }: DeleteBoxProps) {
+  const [open, setOpen] = useState(false);
+  const [applying, setApplying] = useState(false);
+
+  const extra = Math.max(0, count - examples.length);
+  const description =
+    count === 0
+      ? `Nothing uses ${sourceValue} — this removes the entry from the registry.`
+      : `${count} place${count === 1 ? "" : "s"} use${count === 1 ? "s" : ""} ${sourceValue}: ${examples.join(", ")}${extra > 0 ? ` +${extra} more` : ""}. This removes it from those places and deletes the registry entry.`;
+
+  async function handleDelete(): Promise<void> {
+    if (!requireUid(uid)) return;
+    setApplying(true);
+    try {
+      const removed = await stripTagFromPlacesRemote({ facet: sourceFacet, value: sourceValue });
+      await deleteTagDocRemote(tagDocId(sourceFacet, sourceValue));
+      toast.success(
+        removed === 0
+          ? `"${sourceValue}" deleted.`
+          : `"${sourceValue}" deleted (removed from ${removed} place${removed === 1 ? "" : "s"}).`,
+      );
+      setOpen(false);
+    } catch {
+      toast.error("Could not delete the tag. Please try again.");
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  return (
+    <>
+      <Button
+        aria-label={`Delete ${sourceValue}`}
+        className="hover:text-destructive"
+        onClick={() => setOpen(true)}
+        size="icon-sm"
+        variant="ghost"
+      >
+        <Trash2 aria-hidden="true" />
+      </Button>
+      <Dialog open={open} onOpenChange={(next) => !next && setOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {sourceValue}?</DialogTitle>
+            <DialogDescription>{description} This cannot be undone.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button disabled={applying} onClick={() => setOpen(false)} variant="outline">
+              Cancel
+            </Button>
+            <Button disabled={applying} onClick={handleDelete} variant="destructive">
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function ConfirmCheckbox({
   checked,
   onChange,
@@ -365,6 +444,13 @@ function TagRow({ foods, maps, row, sourceFacet, tags, uid }: TagRowProps) {
             sourceFacet={sourceFacet}
             sourceValue={row.value}
             tags={tags}
+            uid={uid}
+          />
+          <DeleteBox
+            count={row.count}
+            examples={row.examples}
+            sourceFacet={sourceFacet}
+            sourceValue={row.value}
             uid={uid}
           />
         </div>

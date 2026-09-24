@@ -122,8 +122,9 @@ service cloud.firestore {
       allow update: if request.auth != null
         && isValidTagDoc(request.resource.data);
 
-      // Deprecate instead of deleting so old places keep parsing.
-      allow delete: if false;
+      // Deprecate retires the entry; delete strips the value from places
+      // first, then removes the registry doc.
+      allow delete: if request.auth != null;
     }
   }
 }

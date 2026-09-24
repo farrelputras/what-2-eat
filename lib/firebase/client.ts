@@ -37,7 +37,13 @@ import {
   type FoodInput,
 } from "@/lib/foods";
 import type { FoodPlace } from "@/lib/foods/types";
-import { normalizeTagDoc, parseTagFacet, parseTagValue, replaceTagValueInPlace } from "@/lib/tags";
+import {
+  normalizeTagDoc,
+  parseTagFacet,
+  parseTagValue,
+  removeTagValueFromPlace,
+  replaceTagValueInPlace,
+} from "@/lib/tags";
 import { tagDocId } from "@/lib/tags/types";
 import type { TagDoc } from "@/lib/tags/types";
 
@@ -375,6 +381,43 @@ export async function setTagDeprecated(
     updatedAt: serverTimestamp(),
     updatedByUid: uid,
   });
+}
+
+export async function deleteTagDoc(id: string): Promise<void> {
+  const db = getFirebaseDb();
+  if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
+  await deleteDoc(doc(db, TAGS_COLLECTION, id));
+}
+
+// Emulator-only test aid: strip a deleted value from affected food_places
+// docs. Only shrinks facet lists, so structural caps stay satisfied.
+export async function stripTagFromPlaces(input: { facet: string; value: string }): Promise<number> {
+  const db = getFirebaseDb();
+  if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
+  const snapshot = await getDocs(collection(db, FOOD_PLACES_COLLECTION));
+  const batch = writeBatch(db);
+  let count = 0;
+  for (const docSnapshot of snapshot.docs) {
+    const place = toFoodPlace(docSnapshot.id, docSnapshot.data());
+    if (!place) continue;
+    const next = removeTagValueFromPlace(place.tags, input.facet, input.value);
+    if (!next) continue;
+    batch.update(docSnapshot.ref, {
+      tags: {
+        ...(next.healthStyle ? { healthStyle: next.healthStyle } : {}),
+        ingredients: next.ingredients,
+        menus: next.menus,
+        origins: next.origins,
+        pending: next.pending,
+        ...(next.priceTier ? { priceTier: next.priceTier } : {}),
+        servings: next.servings,
+      },
+      updatedAt: serverTimestamp(),
+    });
+    count += 1;
+  }
+  if (count > 0) await batch.commit();
+  return count;
 }
 
 // Emulator-only test aid: rewrite affected food_places docs after a
