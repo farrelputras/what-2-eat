@@ -372,13 +372,27 @@ export function FoodsCatalogClient({
 
   function handleSelectAll(): void {
     cancelSpin();
-    setExcludedIds(new Set());
+    setExcludedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(filtered.map((place) => place.id));
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (visible.has(id)) changed = true;
+        else next.add(id);
+      }
+      return changed ? next : prev;
+    });
   }
 
   function handleClearPool(): void {
     cancelSpin();
     setPickedId(null);
-    setExcludedIds(new Set(filtered.map((place) => place.id)));
+    setExcludedIds((prev) => {
+      const next = new Set(prev);
+      for (const place of filtered) next.add(place.id);
+      return next;
+    });
   }
 
   function handleReset(): void {
@@ -541,7 +555,7 @@ export function FoodsCatalogClient({
           {filtered.length > 0 && (
             <>
               <Button
-                disabled={excludedIds.size === 0}
+                disabled={pool.length === filtered.length}
                 onClick={handleSelectAll}
                 size="sm"
                 variant="ghost"
