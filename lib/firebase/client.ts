@@ -27,8 +27,8 @@ import {
 
 import {
   normalizeFoodAreas,
+  normalizeFoodFacets,
   normalizeFoodName,
-  normalizeFoodTags,
   normalizeFoodUrl,
   slugFoodId,
   type FoodInput,
@@ -192,16 +192,27 @@ function toFoodPlace(id: string, data: Record<string, unknown>): FoodPlace | nul
     data["areas"].filter((area): area is string => typeof area === "string"),
   );
   if (areas.length === 0) return null;
-  if (!Array.isArray(data["tags"])) return null;
-  const tags = data["tags"].filter((tag): tag is string => typeof tag === "string");
+  const facets = normalizeFoodFacets({
+    healthStyle: data["healthStyle"],
+    ingredients: data["ingredients"],
+    menus: data["menus"],
+    origins: data["origins"],
+    priceTier: data["priceTier"],
+    servings: data["servings"],
+  });
   const instagramUrl = toOptionalUrl(data, "instagramUrl");
   const tiktokUrl = toOptionalUrl(data, "tiktokUrl");
   return {
     areas,
+    ...(facets.healthStyle ? { healthStyle: facets.healthStyle } : {}),
     id,
+    ingredients: facets.ingredients,
     ...(instagramUrl ? { instagramUrl } : {}),
+    menus: facets.menus,
     name: data["name"],
-    tags,
+    origins: facets.origins,
+    ...(facets.priceTier ? { priceTier: facets.priceTier } : {}),
+    servings: facets.servings,
     ...(tiktokUrl ? { tiktokUrl } : {}),
   };
 }
@@ -233,23 +244,34 @@ export function subscribeFoodPlaces(
 export async function createPlace(input: FoodInput, uid: string): Promise<FoodPlace> {
   const db = getFirebaseDb();
   if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
+  const facets = normalizeFoodFacets(input);
   const instagramUrl = normalizeFoodUrl(input.instagramUrl);
   const tiktokUrl = normalizeFoodUrl(input.tiktokUrl);
   const place: FoodPlace = {
     areas: normalizeFoodAreas(input.areas),
+    ...(facets.healthStyle ? { healthStyle: facets.healthStyle } : {}),
     id: slugFoodId(normalizeFoodName(input.name)),
+    ingredients: facets.ingredients,
     ...(instagramUrl ? { instagramUrl } : {}),
+    menus: facets.menus,
     name: normalizeFoodName(input.name),
-    tags: normalizeFoodTags(input.tags),
+    origins: facets.origins,
+    ...(facets.priceTier ? { priceTier: facets.priceTier } : {}),
+    servings: facets.servings,
     ...(tiktokUrl ? { tiktokUrl } : {}),
   };
   await setDoc(doc(db, FOOD_PLACES_COLLECTION, place.id), {
     areas: place.areas,
+    ...(place.healthStyle ? { healthStyle: place.healthStyle } : {}),
+    ingredients: place.ingredients,
     ...(instagramUrl ? { instagramUrl } : {}),
     createdAt: serverTimestamp(),
     createdByUid: uid,
+    menus: place.menus,
     name: place.name,
-    tags: place.tags,
+    origins: place.origins,
+    ...(place.priceTier ? { priceTier: place.priceTier } : {}),
+    servings: place.servings,
     ...(tiktokUrl ? { tiktokUrl } : {}),
     updatedAt: serverTimestamp(),
   });
@@ -259,11 +281,21 @@ export async function createPlace(input: FoodInput, uid: string): Promise<FoodPl
 export async function updatePlace(id: string, input: FoodInput): Promise<void> {
   const db = getFirebaseDb();
   if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
+  const facets = normalizeFoodFacets(input);
   await updateDoc(doc(db, FOOD_PLACES_COLLECTION, id), {
     areas: normalizeFoodAreas(input.areas),
+    healthStyle: facets.healthStyle ?? deleteField(),
+    ingredients: facets.ingredients,
     instagramUrl: normalizeFoodUrl(input.instagramUrl) ?? deleteField(),
+    menus: facets.menus,
     name: normalizeFoodName(input.name),
-    tags: normalizeFoodTags(input.tags),
+    origins: facets.origins,
+    priceTier: facets.priceTier ?? deleteField(),
+    proteins: deleteField(),
+    servings: facets.servings,
+    serving: deleteField(),
+    staples: deleteField(),
+    tags: deleteField(),
     tiktokUrl: normalizeFoodUrl(input.tiktokUrl) ?? deleteField(),
     updatedAt: serverTimestamp(),
   });

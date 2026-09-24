@@ -2,13 +2,26 @@ import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 import seedRows from "../lib/foods/data/foods.json" with { type: "json" };
+import {
+  HEALTH_STYLE_VOCAB,
+  INGREDIENT_VOCAB,
+  MENU_VOCAB,
+  ORIGIN_VOCAB,
+  PRICE_TIER_VOCAB,
+  SERVING_VOCAB,
+} from "../lib/foods/types";
 
 interface SeedRow {
   areas: string[];
+  healthStyle?: string;
   id: string;
+  ingredients?: string[];
   instagramUrl?: string;
+  menus?: string[];
   name: string;
-  tags: string[];
+  origins?: string[];
+  priceTier?: string;
+  servings?: string[];
   tiktokUrl?: string;
 }
 
@@ -22,6 +35,36 @@ function fail(message: string): never {
 function isPlaceholder(value: string | undefined): boolean {
   if (!value) return true;
   return value.startsWith("paste-") || value.startsWith("your-") || value.includes("replace-with");
+}
+
+function checkMulti(
+  rowName: string,
+  field: string,
+  values: string[] | undefined,
+  vocab: readonly string[],
+  cap: number,
+): string[] {
+  const list = values ?? [];
+  if (list.length > cap) fail(`too many ${field} in seed data: ${rowName}`);
+  for (const value of list) {
+    if (!(vocab as readonly string[]).includes(value)) {
+      fail(`bad ${field} in seed data: ${rowName} → ${value}`);
+    }
+  }
+  return list;
+}
+
+function checkSingle(
+  rowName: string,
+  field: string,
+  value: string | undefined,
+  vocab: readonly string[],
+): string | undefined {
+  if (value === undefined) return undefined;
+  if (!(vocab as readonly string[]).includes(value)) {
+    fail(`bad ${field} in seed data: ${rowName} → ${value}`);
+  }
+  return value;
 }
 
 async function main(): Promise<void> {
@@ -45,7 +88,20 @@ async function main(): Promise<void> {
     for (const area of row.areas) {
       if (!ALLOWED_AREAS.has(area)) fail(`bad area in seed data: ${row.name} → ${area}`);
     }
-    if (row.tags.length < 1 || row.tags.length > 8) fail(`bad tags in seed data: ${row.name}`);
+    const menus = checkMulti(row.name, "menus", row.menus, MENU_VOCAB, 3);
+    const servings = checkMulti(row.name, "servings", row.servings, SERVING_VOCAB, 2);
+    const ingredients = checkMulti(row.name, "ingredients", row.ingredients, INGREDIENT_VOCAB, 5);
+    const origins = checkMulti(row.name, "origins", row.origins, ORIGIN_VOCAB, 3);
+    const priceTier = checkSingle(row.name, "priceTier", row.priceTier, PRICE_TIER_VOCAB);
+    const healthStyle = checkSingle(row.name, "healthStyle", row.healthStyle, HEALTH_STYLE_VOCAB);
+    const total =
+      menus.length +
+      servings.length +
+      ingredients.length +
+      origins.length +
+      (priceTier ? 1 : 0) +
+      (healthStyle ? 1 : 0);
+    if (total > 8) fail(`too many facet values in seed data: ${row.name}`);
     for (const url of [row.instagramUrl, row.tiktokUrl]) {
       if (url === undefined) continue;
       if (!url.startsWith("https://") || url.length > 300) {
@@ -94,11 +150,16 @@ async function main(): Promise<void> {
       .doc(row.id)
       .set({
         areas: row.areas,
+        ...(row.healthStyle ? { healthStyle: row.healthStyle } : {}),
+        ingredients: row.ingredients ?? [],
         ...(row.instagramUrl ? { instagramUrl: row.instagramUrl } : {}),
         createdAt: new Date(),
         createdByUid: "seed",
+        menus: row.menus ?? [],
         name: row.name,
-        tags: row.tags,
+        origins: row.origins ?? [],
+        ...(row.priceTier ? { priceTier: row.priceTier } : {}),
+        servings: row.servings ?? [],
         ...(row.tiktokUrl ? { tiktokUrl: row.tiktokUrl } : {}),
         updatedAt: new Date(),
       });

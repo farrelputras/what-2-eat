@@ -17,8 +17,9 @@ import {
 } from "@/lib/firebase/client";
 import {
   deriveAreaCatalog,
-  deriveTagCatalog,
+  deriveFacetCatalog,
   filterFoods,
+  formatFacetValue,
   pickRandomFood,
   type FoodInput,
 } from "@/lib/foods";
@@ -32,16 +33,124 @@ interface FoodsCatalogClientProps {
   initialFoods: FoodPlace[];
 }
 
+const FACET_META = [
+  { dot: "bg-rose-500", key: "menus", label: "Menu", prefix: "Menu" },
+  { dot: "bg-emerald-500", key: "priceTiers", label: "Price", prefix: "Price" },
+  { dot: "bg-violet-500", key: "servings", label: "Serving", prefix: "Serving" },
+  { dot: "bg-amber-500", key: "ingredients", label: "Ingredients", prefix: "Ingredient" },
+  { dot: "bg-sky-500", key: "origins", label: "Origin", prefix: "Origin" },
+  { dot: "bg-lime-500", key: "healthStyles", label: "Style", prefix: "Style" },
+] as const;
+
+type FacetKey = (typeof FACET_META)[number]["key"];
+
 function formatArea(area: string): string {
   if (area === "all") return "All areas";
   return area.charAt(0).toUpperCase() + area.slice(1);
+}
+
+function FoodBadges({ place }: { place: FoodPlace }) {
+  const badges: { ariaLabel: string; dot: string; key: string; text: string }[] = [
+    ...place.menus.map((value) => ({
+      ariaLabel: `Menu: ${formatFacetValue(value)}`,
+      dot: "bg-rose-500",
+      key: `menu-${value}`,
+      text: formatFacetValue(value),
+    })),
+    ...(place.priceTier
+      ? [
+          {
+            ariaLabel: `Price: ${formatFacetValue(place.priceTier)}`,
+            dot: "bg-emerald-500",
+            key: "price",
+            text: formatFacetValue(place.priceTier),
+          },
+        ]
+      : []),
+    ...place.servings.map((value) => ({
+      ariaLabel: `Serving: ${formatFacetValue(value)}`,
+      dot: "bg-violet-500",
+      key: `serving-${value}`,
+      text: formatFacetValue(value),
+    })),
+    ...place.ingredients.map((value) => ({
+      ariaLabel: `Ingredient: ${formatFacetValue(value)}`,
+      dot: "bg-amber-500",
+      key: `ingredient-${value}`,
+      text: formatFacetValue(value),
+    })),
+    ...place.origins.map((value) => ({
+      ariaLabel: `Origin: ${formatFacetValue(value)}`,
+      dot: "bg-sky-500",
+      key: `origin-${value}`,
+      text: formatFacetValue(value),
+    })),
+    ...(place.healthStyle
+      ? [
+          {
+            ariaLabel: `Style: ${formatFacetValue(place.healthStyle)}`,
+            dot: "bg-lime-500",
+            key: "health",
+            text: formatFacetValue(place.healthStyle),
+          },
+        ]
+      : []),
+  ];
+  if (badges.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2.5">
+      {badges.map((badge) => (
+        <Badge aria-label={badge.ariaLabel} key={badge.key} variant="secondary">
+          <span aria-hidden="true" className={`size-1.5 rounded-full ${badge.dot}`} />
+          {badge.text}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+interface FacetSectionProps {
+  onToggle: (value: string) => void;
+  selected: string[];
+  title: string;
+  values: string[];
+}
+
+function FacetSection({ onToggle, selected, title, values }: FacetSectionProps) {
+  if (values.length === 0) return null;
+  return (
+    <div className="grid gap-2.5">
+      <p className="text-sm font-medium">{title}</p>
+      <div className="flex flex-wrap gap-2.5">
+        {values.map((value) => {
+          const active = selected.includes(value);
+          return (
+            <Button
+              aria-pressed={active}
+              key={value}
+              onClick={() => onToggle(value)}
+              size="sm"
+              variant={active ? "default" : "outline"}
+            >
+              {formatFacetValue(value)}
+            </Button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalogClientProps) {
   const [foods, setFoods] = useState<FoodPlace[]>(initialFoods);
   const [uid, setUid] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
+  const [selectedPriceTiers, setSelectedPriceTiers] = useState<string[]>([]);
+  const [selectedServings, setSelectedServings] = useState<string[]>([]);
+  const [selectedIngredients, setSelectedIngredients] = useState<string[]>([]);
+  const [selectedOrigins, setSelectedOrigins] = useState<string[]>([]);
+  const [selectedHealthStyles, setSelectedHealthStyles] = useState<string[]>([]);
   const [area, setArea] = useState("all");
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [form, setForm] = useState<{ place: FoodPlace | null } | null>(null);
@@ -59,24 +168,46 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
     [],
   );
 
-  const catalogTags = useMemo(() => deriveTagCatalog(foods), [foods]);
+  const catalog = useMemo(() => deriveFacetCatalog(foods), [foods]);
   const catalogAreas = useMemo(() => deriveAreaCatalog(foods), [foods]);
 
-  const visibleTags = useMemo(
-    () => selectedTags.filter((tag) => catalogTags.includes(tag)),
-    [catalogTags, selectedTags],
-  );
+  const selectedByFacet: Record<FacetKey, string[]> = {
+    healthStyles: selectedHealthStyles,
+    ingredients: selectedIngredients,
+    menus: selectedMenus,
+    origins: selectedOrigins,
+    priceTiers: selectedPriceTiers,
+    servings: selectedServings,
+  };
+  const visibleByFacet: Record<FacetKey, string[]> = {
+    healthStyles: selectedHealthStyles.filter((value) => catalog.healthStyles.includes(value)),
+    ingredients: selectedIngredients.filter((value) => catalog.ingredients.includes(value)),
+    menus: selectedMenus.filter((value) => catalog.menus.includes(value)),
+    origins: selectedOrigins.filter((value) => catalog.origins.includes(value)),
+    priceTiers: selectedPriceTiers.filter((value) => catalog.priceTiers.includes(value)),
+    servings: selectedServings.filter((value) => catalog.servings.includes(value)),
+  };
   const effectiveArea = area === "all" || catalogAreas.includes(area) ? area : "all";
 
-  const filtered = useMemo(
-    () => filterFoods(foods, { area: effectiveArea, search, tags: visibleTags }),
-    [foods, effectiveArea, search, visibleTags],
-  );
+  const visibleKey = JSON.stringify(visibleByFacet);
+  const filtered = useMemo(() => {
+    const visible: Record<FacetKey, string[]> = JSON.parse(visibleKey);
+    return filterFoods(foods, {
+      area: effectiveArea,
+      healthStyles: visible.healthStyles,
+      ingredients: visible.ingredients,
+      menus: visible.menus,
+      origins: visible.origins,
+      priceTiers: visible.priceTiers,
+      search,
+      servings: visible.servings,
+    });
+  }, [foods, effectiveArea, search, visibleKey]);
   const picked = pickedId ? (foods.find((place) => place.id === pickedId) ?? null) : null;
 
-  function toggleTag(tag: string): void {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+  function toggleIn(setter: (update: (prev: string[]) => string[]) => void, value: string): void {
+    setter((prev) =>
+      prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value],
     );
     setPickedId(null);
   }
@@ -99,7 +230,12 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
     setArea("all");
     setPickedId(null);
     setSearch("");
-    setSelectedTags([]);
+    setSelectedMenus([]);
+    setSelectedPriceTiers([]);
+    setSelectedServings([]);
+    setSelectedIngredients([]);
+    setSelectedOrigins([]);
+    setSelectedHealthStyles([]);
   }
 
   function openCreate(event: MouseEvent<HTMLButtonElement>): void {
@@ -156,7 +292,19 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
     }
   }
 
-  const isFiltered = search.trim() !== "" || selectedTags.length > 0 || area !== "all";
+  const setters: Record<FacetKey, (update: (prev: string[]) => string[]) => void> = {
+    healthStyles: setSelectedHealthStyles,
+    ingredients: setSelectedIngredients,
+    menus: setSelectedMenus,
+    origins: setSelectedOrigins,
+    priceTiers: setSelectedPriceTiers,
+    servings: setSelectedServings,
+  };
+
+  const isFiltered =
+    search.trim() !== "" ||
+    area !== "all" ||
+    Object.values(selectedByFacet).some((selected) => selected.length > 0);
 
   return (
     <div className="grid gap-10">
@@ -173,25 +321,48 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
           />
         </div>
 
-        <div className="grid gap-2.5">
-          <p className="text-sm font-medium">Tags (select one or more)</p>
-          <div className="flex flex-wrap gap-2.5">
-            {catalogTags.map((tag) => {
-              const active = visibleTags.includes(tag);
-              return (
-                <Button
-                  key={tag}
-                  aria-pressed={active}
-                  onClick={() => toggleTag(tag)}
-                  size="sm"
-                  variant={active ? "default" : "outline"}
-                >
-                  {tag}
-                </Button>
-              );
-            })}
+        <FacetSection
+          onToggle={(value) => toggleIn(setters.menus, value)}
+          selected={visibleByFacet.menus}
+          title="Menu"
+          values={catalog.menus}
+        />
+        <FacetSection
+          onToggle={(value) => toggleIn(setters.priceTiers, value)}
+          selected={visibleByFacet.priceTiers}
+          title="Price"
+          values={catalog.priceTiers}
+        />
+        <FacetSection
+          onToggle={(value) => toggleIn(setters.servings, value)}
+          selected={visibleByFacet.servings}
+          title="Serving"
+          values={catalog.servings}
+        />
+
+        <details className="grid gap-2.5">
+          <summary className="cursor-pointer text-sm font-medium">More filters</summary>
+          <div className="grid gap-5 pt-2.5">
+            <FacetSection
+              onToggle={(value) => toggleIn(setters.ingredients, value)}
+              selected={visibleByFacet.ingredients}
+              title="Ingredients"
+              values={catalog.ingredients}
+            />
+            <FacetSection
+              onToggle={(value) => toggleIn(setters.origins, value)}
+              selected={visibleByFacet.origins}
+              title="Origin"
+              values={catalog.origins}
+            />
+            <FacetSection
+              onToggle={(value) => toggleIn(setters.healthStyles, value)}
+              selected={visibleByFacet.healthStyles}
+              title="Style"
+              values={catalog.healthStyles}
+            />
           </div>
-        </div>
+        </details>
 
         <div className="grid gap-2.5">
           <p className="text-sm font-medium">Area</p>
@@ -242,12 +413,8 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
           <div className="rounded-lg border bg-card p-5 grid gap-2.5" aria-live="polite">
             <p className="text-sm text-muted-foreground">Your random pick:</p>
             <p className="text-2xl font-semibold">{picked.name}</p>
+            <FoodBadges place={picked} />
             <div className="flex flex-wrap gap-2.5">
-              {picked.tags.map((tag) => (
-                <Badge key={tag} variant="secondary">
-                  {tag}
-                </Badge>
-              ))}
               {picked.areas.map((item) => (
                 <Badge key={item} variant="outline">
                   {formatArea(item)}
@@ -268,9 +435,12 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
         )}
       </div>
 
+      <p className="text-xs text-muted-foreground">
+        Badges show the value; color groups them by facet.
+      </p>
       {filtered.length === 0 ? (
         <div className="grid gap-2.5 rounded-lg border border-dashed p-10 text-center justify-items-center">
-          <p className="text-lg font-medium">No matches — remove tags or reset filters</p>
+          <p className="text-lg font-medium">No matches — remove filters or reset filters</p>
           <Button onClick={handleReset} variant="outline">
             Reset filters
           </Button>
@@ -300,13 +470,7 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
                   </Button>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2.5">
-                {place.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
+              <FoodBadges place={place} />
               <div className="flex flex-wrap gap-2.5">
                 {place.areas.map((item) => (
                   <Badge key={item} variant="outline">
@@ -349,7 +513,6 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
           onSubmit={handleFormSubmit}
           open
           place={form.place}
-          tagSuggestions={catalogTags}
         />
       )}
     </div>

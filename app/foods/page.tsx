@@ -10,7 +10,8 @@ import { isAuthBypassEnabled } from "@/lib/firebase/admin";
 import { fetchFoodPlacesInitial, verifySessionCookie } from "@/lib/firebase/server";
 
 export const metadata: Metadata = {
-  description: "Filter by tags and area, or pick randomly from the current results.",
+  description:
+    "Filter by menu, price, serving, and more, or pick randomly from the current results.",
   title: "What to eat?",
 };
 
@@ -22,7 +23,8 @@ export default function FoodsPage() {
           <div className="grid gap-2.5">
             <h1 className="text-3xl sm:text-4xl md:text-5xl">What to eat?</h1>
             <p className="text-sm md:text-base text-muted-foreground max-w-xl">
-              Filter by tags and area, or let shuffle pick from the current results.
+              Filter by menu, price, serving, and more, or let shuffle pick from the current
+              results.
             </p>
           </div>
           <Suspense

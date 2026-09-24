@@ -1,12 +1,23 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isValidFacetList(values, allowed, maxSize) {
+      return values is list && values.size() <= maxSize && values.hasOnly(allowed);
+    }
+    function facetTotal(data) {
+      return (("menus" in data) ? data.menus.size() : 0)
+        + (("servings" in data) ? data.servings.size() : 0)
+        + (("ingredients" in data) ? data.ingredients.size() : 0)
+        + (("origins" in data) ? data.origins.size() : 0)
+        + (("priceTier" in data) ? 1 : 0)
+        + (("healthStyle" in data) ? 1 : 0);
+    }
     match /food_places/{id} {
       allow read: if request.auth != null;
 
       allow create: if request.auth != null
         && request.resource.data.keys().hasOnly(
-          ["areas", "name", "tags", "createdByUid", "createdAt", "updatedAt", "instagramUrl", "tiktokUrl"])
+          ["areas", "name", "menus", "servings", "ingredients", "origins", "priceTier", "healthStyle", "createdByUid", "createdAt", "updatedAt", "instagramUrl", "tiktokUrl"])
         && request.resource.data.name is string
         && request.resource.data.name.size() >= 1
         && request.resource.data.name.size() <= 80
@@ -14,8 +25,13 @@ service cloud.firestore {
         && request.resource.data.areas.size() >= 1
         && request.resource.data.areas.size() <= 3
         && request.resource.data.areas.hasOnly(["batam", "malang", "surabaya"])
-        && request.resource.data.tags.size() >= 1
-        && request.resource.data.tags.size() <= 8
+        && (!("menus" in request.resource.data) || isValidFacetList(request.resource.data.menus, ["burger", "pizza", "pasta", "sandwich", "sushi", "rice-bowl", "noodle-bowl", "soup", "porridge", "salad", "fried-chicken", "grill", "dessert", "bakery", "coffee", "beverage"], 3))
+        && (!("servings" in request.resource.data) || isValidFacetList(request.resource.data.servings, ["meal", "snack"], 2))
+        && (!("ingredients" in request.resource.data) || isValidFacetList(request.resource.data.ingredients, ["rice", "noodles", "bread", "potato", "porridge", "none", "chicken", "beef", "seafood", "egg", "plant", "pork", "mixed"], 5))
+        && (!("origins" in request.resource.data) || isValidFacetList(request.resource.data.origins, ["indonesian", "chinese", "japanese", "korean", "western", "middle-eastern", "southeast-asian", "mixed"], 3))
+        && (!("priceTier" in request.resource.data) || request.resource.data.priceTier in ["budget", "regular", "premium", "splurge"])
+        && (!("healthStyle" in request.resource.data) || request.resource.data.healthStyle in ["comfort", "everyday", "fresh"])
+        && facetTotal(request.resource.data) <= 8
         && request.resource.data.createdByUid == request.auth.uid
         && (!("instagramUrl" in request.resource.data)
           || (request.resource.data.instagramUrl is string
@@ -30,7 +46,7 @@ service cloud.firestore {
       // is immutable console forensics — never changed by an update.
       allow update: if request.auth != null
         && request.resource.data.keys().hasOnly(
-          ["areas", "name", "tags", "createdByUid", "createdAt", "updatedAt", "instagramUrl", "tiktokUrl"])
+          ["areas", "name", "menus", "servings", "ingredients", "origins", "priceTier", "healthStyle", "createdByUid", "createdAt", "updatedAt", "instagramUrl", "tiktokUrl"])
         && request.resource.data.name is string
         && request.resource.data.name.size() >= 1
         && request.resource.data.name.size() <= 80
@@ -38,8 +54,13 @@ service cloud.firestore {
         && request.resource.data.areas.size() >= 1
         && request.resource.data.areas.size() <= 3
         && request.resource.data.areas.hasOnly(["batam", "malang", "surabaya"])
-        && request.resource.data.tags.size() >= 1
-        && request.resource.data.tags.size() <= 8
+        && (!("menus" in request.resource.data) || isValidFacetList(request.resource.data.menus, ["burger", "pizza", "pasta", "sandwich", "sushi", "rice-bowl", "noodle-bowl", "soup", "porridge", "salad", "fried-chicken", "grill", "dessert", "bakery", "coffee", "beverage"], 3))
+        && (!("servings" in request.resource.data) || isValidFacetList(request.resource.data.servings, ["meal", "snack"], 2))
+        && (!("ingredients" in request.resource.data) || isValidFacetList(request.resource.data.ingredients, ["rice", "noodles", "bread", "potato", "porridge", "none", "chicken", "beef", "seafood", "egg", "plant", "pork", "mixed"], 5))
+        && (!("origins" in request.resource.data) || isValidFacetList(request.resource.data.origins, ["indonesian", "chinese", "japanese", "korean", "western", "middle-eastern", "southeast-asian", "mixed"], 3))
+        && (!("priceTier" in request.resource.data) || request.resource.data.priceTier in ["budget", "regular", "premium", "splurge"])
+        && (!("healthStyle" in request.resource.data) || request.resource.data.healthStyle in ["comfort", "everyday", "fresh"])
+        && facetTotal(request.resource.data) <= 8
         && request.resource.data.createdByUid == resource.data.createdByUid
         && (!("instagramUrl" in request.resource.data)
           || (request.resource.data.instagramUrl is string
