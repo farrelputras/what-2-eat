@@ -652,9 +652,6 @@ export function TagsManagerClient({
           </ul>
         )}
       </section>
-      <p className="text-xs text-muted-foreground">
-        Values are deprecated, never deleted, so old places keep parsing.
-      </p>
     </div>
   );
 }

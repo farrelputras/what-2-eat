@@ -1,7 +1,6 @@
 "use client";
 
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { toast } from "sonner";
 
@@ -446,12 +445,6 @@ export function FoodsCatalogClient({
             Add place
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Shared catalog — changes appear for everyone instantly.{" "}
-          <Link className="underline" href="/foods/tags">
-            Manage the tag registry
-          </Link>
-        </p>
       </div>
 
       <div className="grid gap-2.5">
@@ -489,9 +482,6 @@ export function FoodsCatalogClient({
         )}
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Badges show the value; color groups them by facet.
-      </p>
       {filtered.length === 0 ? (
         <div className="grid gap-2.5 rounded-lg border border-dashed p-10 text-center justify-items-center">
           <p className="text-lg font-medium">No matches — remove filters or reset filters</p>
