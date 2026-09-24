@@ -1,8 +1,9 @@
 # What-2-Eat — Multi-Location Places (`areas: string[]`) (PRD)
 
 - Date: 2026-09-23
-- Status: draft (PRD only, not implemented).
-- Session scope: PRD only. No implementation.
+- Status: implemented (commit `dad31eb`). As-built notes in this line supersede the draft where they differ.
+- Session scope: PRD only. No implementation in this session; implemented separately.
+- As-built: per spec — `areas: string[]` on `FoodPlace`, checkbox group in the form, badge-per-area on cards + shuffle panel, single-select OR-match filter, strict readers, rules + seed + one-shot backfill `scripts/migrate-food-areas.ts` (`seed:migrate-areas`). No deviations: singular `filters.area` (selected filter value) and per-item `formatArea()` retained by design; no legacy `area` doc key remains.
 - Language: English (matches sibling specs; UI copy stays inline English per repo rule).
 - Supplements: `2026-09-22-what-2-eat-design.md` (v1 catalog), `2026-09-22-what-2-eat-crud.md` (CRUD, device-local iteration), `2026-09-22-what-2-eat-firebase.md` (Firestore + login-required, current architecture), `2026-09-22-what-2-eat-social-links.md` (Instagram/TikTok links). This doc changes the area semantics on top of all of them; it changes no auth, tag, shuffle, or social-link semantics.
 

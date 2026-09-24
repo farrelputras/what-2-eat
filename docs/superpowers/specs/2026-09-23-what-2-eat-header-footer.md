@@ -1,8 +1,9 @@
 # What-2-Eat — Header & Footer Adjustment (PRD)
 
 - Date: 2026-09-23
-- Status: approved, ready for implementation
-- Session scope: PRD only. No implementation.
+- Status: implemented (commit `b73d481`). As-built notes in this line supersede the draft where they differ.
+- Session scope: PRD only. No implementation in this session; implemented separately.
+- As-built: per spec — `site.name: "W2E"`, `items = []` with length guards on `MobileMenu`/`QuickLinks`, search + cart blocks commented with restore comments and imports kept, code preserved (not deleted). One deviation: footer renders `© Made with Love for Farrel & Vania ❤️` (© prefix retained) vs §6.4/§9 "exactly" without ©.
 - Language: English (matches sibling specs).
 - Supplements: `2026-09-22-what-2-eat-design.md` (v1 catalog). This doc adjusts the template header/footer chrome for the single-catalog phase; it changes no catalog, CRUD, or commerce semantics.
 
