@@ -37,8 +37,6 @@ interface TagsManagerClientProps {
   initialTags: TagDoc[];
 }
 
-const canApplyMerge = (process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST ?? "").trim() !== "";
-
 function facetLabel(facet: string): string {
   if (facet === "menus") return "Menu";
   if (facet === "servings") return "Serving";
@@ -148,7 +146,7 @@ function SynonymBox({ doc, uid }: { doc: TagDoc; uid: string | null }) {
   );
 }
 
-interface MergeBoxProps {
+interface RenameBoxProps {
   foods: FoodPlace[];
   maps: RegistryMaps;
   sourceFacet: string;
@@ -157,67 +155,69 @@ interface MergeBoxProps {
   uid: string | null;
 }
 
-function MergeBox({ foods, maps, sourceFacet, sourceValue, tags, uid }: MergeBoxProps) {
+function RenameBox({ foods, maps, sourceFacet, sourceValue, tags, uid }: RenameBoxProps) {
   const [open, setOpen] = useState(false);
-  const [targetFacet, setTargetFacet] = useState(sourceFacet);
-  const [targetValue, setTargetValue] = useState("");
+  const [draft, setDraft] = useState(sourceValue);
   const [confirmed, setConfirmed] = useState(false);
   const [applying, setApplying] = useState(false);
 
-  const target = parseTagValue(targetValue);
-  const parsedTargetFacet = parseTagFacet(targetFacet);
-  const targetId = target === "" ? "" : tagDocId(parsedTargetFacet, target);
+  const target = parseTagValue(draft);
+  const targetId = target === "" ? "" : tagDocId(sourceFacet, target);
   const sourceId = tagDocId(sourceFacet, sourceValue);
   const preview = useMemo(() => {
-    if (!open || target === "" || !isValidTagValue(target) || parsedTargetFacet === "") return null;
+    if (!open || target === "" || !isValidTagValue(target)) return null;
     return previewMerge({
       places: foods,
       sourceFacet,
       sourceValue,
-      targetFacet: parsedTargetFacet,
+      targetFacet: sourceFacet,
       targetValue: target,
     });
-  }, [foods, open, sourceFacet, sourceValue, target, parsedTargetFacet]);
+  }, [foods, open, sourceFacet, sourceValue, target]);
   const needsConfirm = (preview?.count ?? 0) > 0;
-  const sameTarget = targetId !== "" && targetId === sourceId;
+  const sameTarget = target !== "" && target === sourceValue;
+  const alreadyTargetCount = preview?.alreadyTarget.length ?? 0;
+  const isSingleValueFacet = sourceFacet === "priceTier" || sourceFacet === "healthStyle";
 
-  async function handleApply(): Promise<void> {
+  async function handleSave(): Promise<void> {
     if (!requireUid(uid)) return;
+    if (target === "" || !isValidTagValue(target)) {
+      toast.error("Value must be 1–24 characters: letters, digits, spaces, hyphens.");
+      return;
+    }
+    if (target === sourceValue) {
+      toast.error("Pick a different name.");
+      return;
+    }
+    const collision = findValueCollision(target, sourceFacet, maps.valueToFacet);
+    if (collision) {
+      toast.error(`"${target}" already lives in ${facetLabel(collision)}.`);
+      return;
+    }
     if (!preview) return;
-    if (sameTarget) {
-      toast.error("Pick a different target to rename or merge.");
-      return;
-    }
-    const facet = parsedTargetFacet;
-    if (!isValidTagFacet(facet)) {
-      toast.error("Facet must be 1–24 characters, starting with a letter.");
-      return;
-    }
-    if (target !== sourceValue && findValueCollision(target, facet, maps.valueToFacet)) {
-      toast.error(`"${target}" already lives in another facet.`);
-      return;
-    }
     if (needsConfirm && !confirmed) {
       toast.error("Confirm the impact first — check the box above.");
       return;
     }
     setApplying(true);
     try {
-      if (!tags.some((tag) => tag.id === targetId)) {
-        await createTagDocRemote({ facet, value: target }, uid);
+      const isMerge = tags.some((tag) => tag.id === targetId);
+      if (!isMerge) {
+        await createTagDocRemote({ facet: sourceFacet, value: target }, uid);
       }
       const updated = await applyTagMergeToPlaces({
         sourceFacet,
         sourceValue,
-        targetFacet: facet,
+        targetFacet: sourceFacet,
         targetValue: target,
       });
       await setTagDeprecatedRemote(sourceId, true, uid);
       toast.success(
-        `Renamed in ${updated} place${updated === 1 ? "" : "s"}; ${sourceValue} retired.`,
+        isMerge
+          ? `Merged ${updated} place${updated === 1 ? "" : "s"} into ${target}; ${sourceValue} retired.`
+          : `Renamed in ${updated} place${updated === 1 ? "" : "s"}; ${sourceValue} retired.`,
       );
       setOpen(false);
-      setTargetValue("");
       setConfirmed(false);
     } catch {
       toast.error("Could not apply the rename. Please try again.");
@@ -228,8 +228,16 @@ function MergeBox({ foods, maps, sourceFacet, sourceValue, tags, uid }: MergeBox
 
   if (!open) {
     return (
-      <Button onClick={() => setOpen(true)} size="sm" variant="ghost">
-        Rename / merge
+      <Button
+        onClick={() => {
+          setDraft(sourceValue);
+          setConfirmed(false);
+          setOpen(true);
+        }}
+        size="sm"
+        variant="ghost"
+      >
+        Rename
       </Button>
     );
   }
@@ -238,18 +246,11 @@ function MergeBox({ foods, maps, sourceFacet, sourceValue, tags, uid }: MergeBox
     <div className="grid gap-2.5 rounded-md border p-2.5">
       <div className="flex flex-wrap gap-2.5">
         <Input
-          aria-label="Target facet"
-          className="w-32"
-          onChange={(event) => setTargetFacet(event.target.value)}
-          placeholder="Facet"
-          value={targetFacet}
-        />
-        <Input
-          aria-label="Target value"
+          aria-label={`Rename ${sourceValue} in ${sourceFacet}`}
           className="w-40"
-          onChange={(event) => setTargetValue(event.target.value)}
+          onChange={(event) => setDraft(event.target.value)}
           placeholder="New value"
-          value={targetValue}
+          value={draft}
         />
         <Button onClick={() => setOpen(false)} size="sm" variant="outline">
           Cancel
@@ -263,6 +264,9 @@ function MergeBox({ foods, maps, sourceFacet, sourceValue, tags, uid }: MergeBox
                 .slice(0, 3)
                 .map((place) => place.name)
                 .join(", ")}${preview.count > 3 ? ` +${preview.count - 3} more` : ""}`}
+          {preview.count > 0 && alreadyTargetCount > 0
+            ? ` ${alreadyTargetCount} already have ${target} — they'll be ${isSingleValueFacet ? "overwritten" : "deduped"}.`
+            : ""}
         </p>
       )}
       {needsConfirm && (
@@ -272,17 +276,11 @@ function MergeBox({ foods, maps, sourceFacet, sourceValue, tags, uid }: MergeBox
           text={`Yes, rewrite ${preview?.count} place${(preview?.count ?? 0) === 1 ? "" : "s"}.`}
         />
       )}
-      {canApplyMerge ? (
-        <div>
-          <Button disabled={applying || !preview || sameTarget} onClick={handleApply} size="sm">
-            Apply to places
-          </Button>
-        </div>
-      ) : (
-        <p className="text-xs text-muted-foreground">
-          Apply runs in the emulator only — the preview above is the safety check.
-        </p>
-      )}
+      <div>
+        <Button disabled={applying || !preview || sameTarget} onClick={handleSave} size="sm">
+          Save
+        </Button>
+      </div>
     </div>
   );
 }
@@ -361,7 +359,7 @@ function TagRow({ foods, maps, row, sourceFacet, tags, uid }: TagRowProps) {
           <Button disabled={toggling} onClick={handleToggleDeprecate} size="sm" variant="outline">
             {row.doc.deprecated ? "Restore" : "Deprecate"}
           </Button>
-          <MergeBox
+          <RenameBox
             foods={foods}
             maps={maps}
             sourceFacet={sourceFacet}
