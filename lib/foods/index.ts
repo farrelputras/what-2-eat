@@ -170,6 +170,29 @@ const DISH_TO_MENU: Record<string, string> = {
   soto: "soup",
 };
 
+// Registry overrides are advisory: when omitted, every rule below behaves
+// exactly as the built-in vocabs + DISH_TO_MENU describe.
+export interface TagRegistryOverride {
+  suggestionsByFacet?: ReadonlyMap<string, string[]>;
+  synonymToTag?: ReadonlyMap<string, { facet: string; value: string }>;
+  valueToFacet?: ReadonlyMap<string, string>;
+}
+
+type KnownTagFacet = keyof Omit<FoodTags, "pending">;
+
+const KNOWN_TAG_FACETS: KnownTagFacet[] = [
+  "menus",
+  "servings",
+  "ingredients",
+  "origins",
+  "priceTier",
+  "healthStyle",
+];
+
+function isKnownTagFacet(facet: string): facet is KnownTagFacet {
+  return (KNOWN_TAG_FACETS as string[]).includes(facet);
+}
+
 const FACET_PREFIXES: Record<string, keyof Omit<FoodTags, "pending">> = {
   health: "healthStyle",
   healthstyle: "healthStyle",
@@ -210,7 +233,50 @@ function facetForValue(value: string): keyof Omit<FoodTags, "pending"> | undefin
   return undefined;
 }
 
-export function mapFreeTextToTags(tokens: string[]): { tags: FoodTags } {
+function legacySynonym(token: string): { facet: string; value: string } | undefined {
+  const parent = DISH_TO_MENU[token];
+  return parent ? { facet: "menus", value: parent } : undefined;
+}
+
+function registryFacetForPrefix(
+  prefix: string,
+  registry?: TagRegistryOverride,
+): string | undefined {
+  if (!registry) return undefined;
+  const facets = new Set<string>();
+  registry.suggestionsByFacet?.forEach((_, facet) => {
+    facets.add(facet);
+  });
+  registry.synonymToTag?.forEach((target) => {
+    facets.add(target.facet);
+  });
+  registry.valueToFacet?.forEach((facet) => {
+    facets.add(facet);
+  });
+  return [...facets].find((facet) => facet.replace(/[^a-z]/gi, "").toLowerCase() === prefix);
+}
+
+function isKnownFacetValue(
+  facet: KnownTagFacet,
+  value: string,
+  registry?: TagRegistryOverride,
+): boolean {
+  if (VOCAB_BY_FACET[facet].has(value)) return true;
+  return registry?.valueToFacet?.get(value) === facet;
+}
+
+function registryFacetForValue(
+  token: string,
+  registry?: TagRegistryOverride,
+): KnownTagFacet | undefined {
+  const facet = registry?.valueToFacet?.get(token);
+  return facet && isKnownTagFacet(facet) ? facet : undefined;
+}
+
+export function mapFreeTextToTags(
+  tokens: string[],
+  registry?: TagRegistryOverride,
+): { tags: FoodTags } {
   const menus: string[] = [];
   const servings: string[] = [];
   const ingredients: string[] = [];
@@ -243,15 +309,18 @@ export function mapFreeTextToTags(tokens: string[]): { tags: FoodTags } {
     if (token === "") continue;
     const colon = token.indexOf(":");
     if (colon !== -1) {
-      const facet = FACET_PREFIXES[token.slice(0, colon).replace(/[^a-z]/g, "")];
+      const prefix = token.slice(0, colon).replace(/[^a-z]/g, "");
+      const facet = FACET_PREFIXES[prefix] ?? registryFacetForPrefix(prefix, registry);
       const value = token.slice(colon + 1).trim();
-      if (facet && VOCAB_BY_FACET[facet].has(value)) assignResolved(facet, value);
-      else addPending(token);
+      if (facet && isKnownTagFacet(facet) && isKnownFacetValue(facet, value, registry)) {
+        assignResolved(facet, value);
+      } else addPending(token);
       continue;
     }
-    const dishParent = DISH_TO_MENU[token];
+    const dishParent = registry?.synonymToTag?.get(token) ?? legacySynonym(token);
     if (dishParent) {
-      addMulti(menus, dishParent);
+      if (isKnownTagFacet(dishParent.facet)) assignResolved(dishParent.facet, dishParent.value);
+      else addPending(token);
       continue;
     }
     // Bare porridge/mixed collide across vocabs; pin each to one facet so the
@@ -264,7 +333,7 @@ export function mapFreeTextToTags(tokens: string[]): { tags: FoodTags } {
       addMulti(ingredients, token);
       continue;
     }
-    const facet = facetForValue(token);
+    const facet = facetForValue(token) ?? registryFacetForValue(token, registry);
     if (facet) assignResolved(facet, token);
     else addPending(token);
   }
@@ -284,17 +353,54 @@ export function mapFreeTextToTags(tokens: string[]): { tags: FoodTags } {
 
 // Serialize tags back to tokens for the edit form. Values that would re-map to
 // a different facet bare (ingredients porridge, origins mixed) keep a prefix.
-export function foodTagsToTokens(tags: FoodTags): string[] {
+export function foodTagsToTokens(tags: FoodTags, registry?: TagRegistryOverride): string[] {
   const tokens: string[] = [];
-  for (const value of tags.menus) tokens.push(value);
+  const needsPrefix = buildPrefixCheck(registry);
+  for (const value of tags.menus)
+    tokens.push(needsPrefix("menus", value) ? `menu:${value}` : value);
   if (tags.priceTier) tokens.push(tags.priceTier);
   for (const value of tags.servings) tokens.push(value);
   for (const value of tags.ingredients)
-    tokens.push(value === "porridge" ? "ingredient:porridge" : value);
-  for (const value of tags.origins) tokens.push(value === "mixed" ? "origin:mixed" : value);
+    tokens.push(needsPrefix("ingredients", value) ? `ingredient:${value}` : value);
+  for (const value of tags.origins)
+    tokens.push(needsPrefix("origins", value) ? `origin:${value}` : value);
   if (tags.healthStyle) tokens.push(tags.healthStyle);
   for (const value of tags.pending) tokens.push(value);
   return tokens;
+}
+
+function buildPrefixCheck(
+  registry?: TagRegistryOverride,
+): (facet: KnownTagFacet, value: string) => boolean {
+  if (!registry?.suggestionsByFacet) {
+    return (facet, value) =>
+      (facet === "ingredients" && value === "porridge") ||
+      (facet === "origins" && value === "mixed");
+  }
+  const holders = new Map<string, Set<string>>();
+  for (const facet of KNOWN_TAG_FACETS) {
+    for (const value of VOCAB_BY_FACET[facet]) {
+      const set = holders.get(value) ?? new Set<string>();
+      set.add(facet);
+      holders.set(value, set);
+    }
+  }
+  registry.suggestionsByFacet.forEach((values, facet) => {
+    for (const value of values) {
+      const set = holders.get(value) ?? new Set<string>();
+      set.add(facet);
+      holders.set(value, set);
+    }
+  });
+  return (facet, value) => {
+    const set = holders.get(value);
+    if (!set || !set.has(facet)) return false;
+    // Prefix only when the bare token would resolve elsewhere: another known
+    // facet holds the value, or this facet is not the pinned home.
+    if (facet === "menus" && value === "porridge") return false;
+    if (facet === "ingredients" && value === "mixed") return false;
+    return set.size > 1;
+  };
 }
 
 export function countFacetValues(tags: FoodTags): number {

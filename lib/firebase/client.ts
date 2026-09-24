@@ -12,16 +12,19 @@ import {
   type User,
 } from "firebase/auth";
 import {
+  arrayUnion,
   collection,
   connectFirestoreEmulator,
   deleteDoc,
   deleteField,
   doc,
+  getDocs,
   getFirestore,
   onSnapshot,
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
   type Firestore,
 } from "firebase/firestore";
 
@@ -34,10 +37,14 @@ import {
   type FoodInput,
 } from "@/lib/foods";
 import type { FoodPlace } from "@/lib/foods/types";
+import { normalizeTagDoc, replaceTagValueInPlace } from "@/lib/tags";
+import { tagDocId } from "@/lib/tags/types";
+import type { TagDoc } from "@/lib/tags/types";
 
 import { TEST_BYPASS_EMAIL, TEST_BYPASS_PASSWORD } from "./index";
 
 const FOOD_PLACES_COLLECTION = "food_places";
+const TAGS_COLLECTION = "tags";
 
 function isPlaceholder(value: string | undefined): boolean {
   if (!value) return true;
@@ -299,4 +306,115 @@ export async function removePlace(id: string): Promise<void> {
   const db = getFirebaseDb();
   if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
   await deleteDoc(doc(db, FOOD_PLACES_COLLECTION, id));
+}
+
+export function subscribeTags(
+  next: (tags: TagDoc[]) => void,
+  onError: (error: Error) => void,
+): () => void {
+  const db = getFirebaseDb();
+  if (!db) {
+    onError(new Error("Firebase is not configured. Fill in your .env.local values."));
+    return () => {};
+  }
+  return onSnapshot(
+    collection(db, TAGS_COLLECTION),
+    (snapshot) => {
+      const tags: TagDoc[] = [];
+      for (const docSnapshot of snapshot.docs) {
+        const tag = normalizeTagDoc(docSnapshot.id, docSnapshot.data());
+        if (tag) tags.push(tag);
+      }
+      tags.sort((a, b) => a.id.localeCompare(b.id));
+      next(tags);
+    },
+    (error) => onError(error),
+  );
+}
+
+export async function createTagDoc(
+  input: { facet: string; value: string },
+  uid: string,
+): Promise<void> {
+  const db = getFirebaseDb();
+  if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
+  const facet = input.facet.trim();
+  const value = input.value.trim().toLowerCase();
+  await setDoc(doc(db, TAGS_COLLECTION, tagDocId(facet, value)), {
+    createdAt: serverTimestamp(),
+    deprecated: false,
+    facet,
+    synonyms: [],
+    updatedAt: serverTimestamp(),
+    updatedByUid: uid,
+    value,
+  });
+}
+
+export async function addTagSynonym(id: string, synonym: string, uid: string): Promise<void> {
+  const db = getFirebaseDb();
+  if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
+  const value = synonym.trim().toLowerCase();
+  if (value === "") throw new Error("Synonym must not be empty.");
+  await updateDoc(doc(db, TAGS_COLLECTION, id), {
+    synonyms: arrayUnion(value),
+    updatedAt: serverTimestamp(),
+    updatedByUid: uid,
+  });
+}
+
+export async function setTagDeprecated(
+  id: string,
+  deprecated: boolean,
+  uid: string,
+): Promise<void> {
+  const db = getFirebaseDb();
+  if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
+  await updateDoc(doc(db, TAGS_COLLECTION, id), {
+    deprecated,
+    updatedAt: serverTimestamp(),
+    updatedByUid: uid,
+  });
+}
+
+// Emulator-only test aid: rewrite affected food_places docs after a
+// rename/merge preview. Not a production migration job.
+export async function applyTagMergeToPlaces(input: {
+  sourceFacet: string;
+  sourceValue: string;
+  targetFacet: string;
+  targetValue: string;
+}): Promise<number> {
+  const db = getFirebaseDb();
+  if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
+  const snapshot = await getDocs(collection(db, FOOD_PLACES_COLLECTION));
+  const batch = writeBatch(db);
+  let count = 0;
+  for (const docSnapshot of snapshot.docs) {
+    const place = toFoodPlace(docSnapshot.id, docSnapshot.data());
+    if (!place) continue;
+    const next = replaceTagValueInPlace(
+      place.tags,
+      input.sourceFacet,
+      input.sourceValue,
+      input.targetFacet,
+      input.targetValue,
+    );
+    if (!next) continue;
+    batch.update(docSnapshot.ref, {
+      tags: {
+        ...(next.healthStyle ? { healthStyle: next.healthStyle } : {}),
+        ingredients: next.ingredients,
+        menus: next.menus,
+        origins: next.origins,
+        pending: next.pending,
+        ...(next.priceTier ? { priceTier: next.priceTier } : {}),
+        servings: next.servings,
+      },
+      updatedAt: serverTimestamp(),
+    });
+    count += 1;
+  }
+  if (count > 0) await batch.commit();
+  return count;
 }

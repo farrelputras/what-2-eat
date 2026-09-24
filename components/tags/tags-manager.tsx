@@ -1,15 +1,15 @@
 import type { FoodPlace } from "@/lib/foods/types";
 import type { TagDoc } from "@/lib/tags/types";
 
-import { FoodsCatalogClient } from "./foods-catalog-client";
+import { TagsManagerClient } from "./tags-manager-client";
 
-interface FoodsCatalogProps {
+interface TagsManagerProps {
   bypass?: boolean;
   initialFoods: FoodPlace[];
   initialTags: TagDoc[];
 }
 
-export function FoodsCatalog({ bypass = false, initialFoods, initialTags }: FoodsCatalogProps) {
+export function TagsManager({ bypass = false, initialFoods, initialTags }: TagsManagerProps) {
   return (
     <div className="grid gap-5">
       {bypass && (
@@ -20,7 +20,7 @@ export function FoodsCatalog({ bypass = false, initialFoods, initialTags }: Food
           Test mode — auth bypass active, using emulator data.
         </p>
       )}
-      <FoodsCatalogClient bypass={bypass} initialFoods={initialFoods} initialTags={initialTags} />
+      <TagsManagerClient bypass={bypass} initialFoods={initialFoods} initialTags={initialTags} />
     </div>
   );
 }

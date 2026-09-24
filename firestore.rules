@@ -72,5 +72,47 @@ service cloud.firestore {
 
       allow delete: if request.auth != null;
     }
+    // Tag registry: UI vocab + synonyms. food_places keeps plain strings and
+    // its own hardcoded validators; this collection never gates reads.
+    function tagSynonymAtOk(values, i) {
+      return values.size() <= i
+        || (values[i] is string && values[i].size() >= 1 && values[i].size() <= 24);
+    }
+    function isValidSynonyms(values) {
+      return values is list && values.size() <= 20
+        && tagSynonymAtOk(values, 0) && tagSynonymAtOk(values, 1)
+        && tagSynonymAtOk(values, 2) && tagSynonymAtOk(values, 3)
+        && tagSynonymAtOk(values, 4) && tagSynonymAtOk(values, 5)
+        && tagSynonymAtOk(values, 6) && tagSynonymAtOk(values, 7)
+        && tagSynonymAtOk(values, 8) && tagSynonymAtOk(values, 9)
+        && tagSynonymAtOk(values, 10) && tagSynonymAtOk(values, 11)
+        && tagSynonymAtOk(values, 12) && tagSynonymAtOk(values, 13)
+        && tagSynonymAtOk(values, 14) && tagSynonymAtOk(values, 15)
+        && tagSynonymAtOk(values, 16) && tagSynonymAtOk(values, 17)
+        && tagSynonymAtOk(values, 18) && tagSynonymAtOk(values, 19);
+    }
+    function isValidTagDoc(data) {
+      return data.keys().hasOnly(
+          ["facet", "value", "synonyms", "deprecated", "updatedByUid", "updatedAt", "createdAt"])
+        && data.facet is string
+        && data.facet.matches('^[a-z][A-Za-z0-9]{0,23}$')
+        && data.value is string
+        && data.value.matches('^[a-z0-9][a-z0-9-]{0,23}$')
+        && (!("synonyms" in data) || isValidSynonyms(data.synonyms))
+        && (!("deprecated" in data) || data.deprecated is bool)
+        && (!("updatedByUid" in data) || data.updatedByUid is string);
+    }
+    match /tags/{tagId} {
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null
+        && isValidTagDoc(request.resource.data);
+
+      allow update: if request.auth != null
+        && isValidTagDoc(request.resource.data);
+
+      // Deprecate instead of deleting so old places keep parsing.
+      allow delete: if false;
+    }
   }
 }

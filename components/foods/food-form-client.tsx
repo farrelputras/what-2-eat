@@ -23,6 +23,7 @@ import {
   validateFoodInput,
   type FoodInput,
   type FoodInputErrors,
+  type TagRegistryOverride,
 } from "@/lib/foods";
 import {
   HEALTH_STYLE_VOCAB,
@@ -34,6 +35,8 @@ import {
   type FoodPlace,
   type FoodTags,
 } from "@/lib/foods/types";
+import { buildRegistryMaps } from "@/lib/tags";
+import type { TagDoc } from "@/lib/tags/types";
 
 interface FoodFormDialogProps {
   existing: FoodPlace[];
@@ -41,6 +44,7 @@ interface FoodFormDialogProps {
   onSubmit: (input: FoodInput) => void;
   open: boolean;
   place: FoodPlace | null;
+  registryTags?: TagDoc[];
 }
 
 function formatArea(area: string): string {
@@ -89,8 +93,73 @@ function buildTagSuggestions(): TagSuggestion[] {
 const TAG_SUGGESTIONS = buildTagSuggestions();
 const MAX_VISIBLE_SUGGESTIONS = 8;
 
-function chipLabel(token: string): string {
-  return TAG_SUGGESTIONS.find((suggestion) => suggestion.token === token)?.label ?? token;
+const REGISTRY_FACET_LABELS: Record<string, string> = {
+  healthStyle: "Style",
+  ingredients: "Ingredient",
+  menus: "Menu",
+  origins: "Origin",
+  priceTier: "Price",
+  servings: "Serving",
+};
+
+const REGISTRY_FACET_PREFIXES: Record<string, string> = {
+  healthStyle: "style",
+  ingredients: "ingredient",
+  menus: "menu",
+  origins: "origin",
+  priceTier: "price",
+  servings: "serving",
+};
+
+// Registry suggestions replace the built-in wall when the registry is present:
+// non-deprecated values grouped by facet plus synonym shortcuts. Empty or
+// unreachable registry falls back to TAG_SUGGESTIONS.
+function buildRegistrySuggestions(maps: TagRegistryOverride): TagSuggestion[] {
+  const byFacet = maps.suggestionsByFacet ?? new Map<string, string[]>();
+  const synonyms = maps.synonymToTag ?? new Map<string, { facet: string; value: string }>();
+  const holders = new Map<string, Set<string>>();
+  byFacet.forEach((values, facet) => {
+    for (const value of values) {
+      const set = holders.get(value) ?? new Set<string>();
+      set.add(facet);
+      holders.set(value, set);
+    }
+  });
+  const out: TagSuggestion[] = [];
+  const facets = [...byFacet.keys()].sort((a, b) =>
+    (REGISTRY_FACET_LABELS[a] ?? a).localeCompare(REGISTRY_FACET_LABELS[b] ?? b),
+  );
+  for (const facet of facets) {
+    const label = REGISTRY_FACET_LABELS[facet] ?? formatFacetValue(facet);
+    const prefix = REGISTRY_FACET_PREFIXES[facet] ?? facet;
+    for (const value of byFacet.get(facet) ?? []) {
+      const shared = (holders.get(value) ?? new Set()).size > 1;
+      out.push({
+        facet: label,
+        label: `${formatFacetValue(value)} (${label})`,
+        token: shared ? `${prefix}:${value}` : value,
+      });
+    }
+  }
+  const synonymTargets = new Map<string, { facet: string; value: string }>();
+  synonyms.forEach((target, synonym) => {
+    if (!synonymTargets.has(synonym)) synonymTargets.set(synonym, target);
+  });
+  for (const [synonym, target] of [...synonymTargets.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  )) {
+    const label = REGISTRY_FACET_LABELS[target.facet] ?? formatFacetValue(target.facet);
+    out.push({
+      facet: label,
+      label: `${formatFacetValue(synonym)} (${label})`,
+      token: synonym,
+    });
+  }
+  return out;
+}
+
+function chipLabel(token: string, suggestions: TagSuggestion[]): string {
+  return suggestions.find((suggestion) => suggestion.token === token)?.label ?? token;
 }
 
 interface PickerRow {
@@ -102,10 +171,11 @@ interface PickerRow {
 interface TagsPickerProps {
   invalid?: boolean;
   onTokensChange: (tokens: string[]) => void;
+  suggestions: TagSuggestion[];
   tokens: string[];
 }
 
-function TagsPicker({ invalid, onTokensChange, tokens }: TagsPickerProps) {
+function TagsPicker({ invalid, onTokensChange, suggestions, tokens }: TagsPickerProps) {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -114,17 +184,19 @@ function TagsPicker({ invalid, onTokensChange, tokens }: TagsPickerProps) {
   const query = search.trim().toLowerCase();
   const matches = useMemo(
     () =>
-      TAG_SUGGESTIONS.filter(
-        (suggestion) =>
-          !tokens.includes(suggestion.token) &&
-          (suggestion.token.includes(query) || suggestion.label.toLowerCase().includes(query)),
-      ).slice(0, MAX_VISIBLE_SUGGESTIONS),
-    [query, tokens],
+      suggestions
+        .filter(
+          (suggestion) =>
+            !tokens.includes(suggestion.token) &&
+            (suggestion.token.includes(query) || suggestion.label.toLowerCase().includes(query)),
+        )
+        .slice(0, MAX_VISIBLE_SUGGESTIONS),
+    [query, suggestions, tokens],
   );
   const canAddCustom =
     query !== "" &&
     !tokens.some((token) => token.toLowerCase() === query) &&
-    !TAG_SUGGESTIONS.some((suggestion) => suggestion.token === query);
+    !suggestions.some((suggestion) => suggestion.token === query);
   const rows: PickerRow[] = [
     ...matches.map((match) => ({ custom: false, label: match.label, token: match.token })),
     ...(canAddCustom ? [{ custom: true, label: query, token: query }] : []),
@@ -193,9 +265,9 @@ function TagsPicker({ invalid, onTokensChange, tokens }: TagsPickerProps) {
         <div className="flex flex-wrap gap-2.5">
           {tokens.map((token) => (
             <Badge key={token} variant="secondary">
-              {chipLabel(token)}
+              {chipLabel(token, suggestions)}
               <button
-                aria-label={`Remove ${chipLabel(token)}`}
+                aria-label={`Remove ${chipLabel(token, suggestions)}`}
                 className="cursor-pointer"
                 onClick={() => removeToken(token)}
                 type="button"
@@ -305,15 +377,35 @@ function TagsPreview({ tags }: { tags: FoodTags }) {
   );
 }
 
-export function FoodFormDialog({ existing, onClose, onSubmit, open, place }: FoodFormDialogProps) {
+export function FoodFormDialog({
+  existing,
+  onClose,
+  onSubmit,
+  open,
+  place,
+  registryTags = [],
+}: FoodFormDialogProps) {
   const [name, setName] = useState(place?.name ?? "");
   const [areas, setAreas] = useState<string[]>(place?.areas ?? []);
   const [instagramUrl, setInstagramUrl] = useState(place?.instagramUrl ?? "");
   const [tiktokUrl, setTiktokUrl] = useState(place?.tiktokUrl ?? "");
-  const [tokens, setTokens] = useState<string[]>(() => (place ? foodTagsToTokens(place.tags) : []));
+  const registry: TagRegistryOverride | null = useMemo(
+    () => (registryTags.length > 0 ? buildRegistryMaps(registryTags) : null),
+    [registryTags],
+  );
+  const suggestions = useMemo(
+    () => (registry ? buildRegistrySuggestions(registry) : TAG_SUGGESTIONS),
+    [registry],
+  );
+  const [tokens, setTokens] = useState<string[]>(() =>
+    place ? foodTagsToTokens(place.tags, registry ?? undefined) : [],
+  );
   const [errors, setErrors] = useState<FoodInputErrors>({});
 
-  const preview = useMemo(() => mapFreeTextToTags(tokens).tags, [tokens]);
+  const preview = useMemo(
+    () => mapFreeTextToTags(tokens, registry ?? undefined).tags,
+    [tokens, registry],
+  );
 
   function toggleArea(area: string): void {
     setAreas((prev) =>
@@ -327,7 +419,7 @@ export function FoodFormDialog({ existing, onClose, onSubmit, open, place }: Foo
       areas,
       instagramUrl,
       name,
-      tags: mapFreeTextToTags(tokens).tags,
+      tags: mapFreeTextToTags(tokens, registry ?? undefined).tags,
       tiktokUrl,
     };
     const next = validateFoodInput(input, existing, place?.id);
@@ -396,6 +488,7 @@ export function FoodFormDialog({ existing, onClose, onSubmit, open, place }: Foo
             <TagsPicker
               invalid={(errors.tags ?? errors.facets) ? true : undefined}
               onTokensChange={setTokens}
+              suggestions={suggestions}
               tokens={tokens}
             />
             <TagsPreview tags={preview} />

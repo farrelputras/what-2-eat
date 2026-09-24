@@ -15,8 +15,11 @@ import { QuickLinks } from "./quick-links";
 import { SearchModal } from "./search-modal";
 
 export function Nav() {
-  // Single-catalog phase: Katalog hidden; restore by re-adding the entry.
-  const items: MenuItem[] = [];
+  // Single-catalog phase: local entries; Shopify menu stays hidden.
+  const items: MenuItem[] = [
+    { id: "home", items: [], title: "Home", type: "PAGE", url: "/foods" },
+    { id: "tags", items: [], title: "Tags", type: "PAGE", url: "/foods/tags" },
+  ];
   return (
     <nav
       className="sticky top-0 z-30 w-full bg-background pt-[env(safe-area-inset-top,0px)] transition-shadow duration-250"

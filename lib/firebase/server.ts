@@ -3,6 +3,8 @@ import { connection } from "next/server";
 
 import { normalizeFoodAreas, normalizeFoodTags } from "@/lib/foods";
 import type { FoodPlace } from "@/lib/foods/types";
+import { normalizeTagDoc } from "@/lib/tags";
+import type { TagDoc } from "@/lib/tags/types";
 
 import { getAdminAuth, getAdminDb, isAuthBypassEnabled, SESSION_COOKIE_NAME } from "./admin";
 import {
@@ -137,4 +139,25 @@ export async function fetchFoodPlacesInitial(): Promise<FoodPlace[]> {
   }
   places.sort((a, b) => a.name.localeCompare(b.name));
   return places;
+}
+
+export async function fetchTagsInitial(): Promise<TagDoc[]> {
+  await connection();
+  const db = getAdminDb();
+  if (!db) {
+    if (isAuthBypassEnabled()) {
+      throw new Error(
+        "Auth bypass is on but the Firestore emulator is unreachable. Start it with `firebase emulators:start`, then retry.",
+      );
+    }
+    return [];
+  }
+  const tagsSnapshot = await db.collection("tags").get();
+  const tags: TagDoc[] = [];
+  for (const doc of tagsSnapshot.docs) {
+    const tag = normalizeTagDoc(doc.id, doc.data());
+    if (tag) tags.push(tag);
+  }
+  tags.sort((a, b) => a.id.localeCompare(b.id));
+  return tags;
 }

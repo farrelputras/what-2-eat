@@ -1,6 +1,7 @@
 "use client";
 
 import { Pencil, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { toast } from "sonner";
 
@@ -13,6 +14,7 @@ import {
   removePlace as removePlaceRemote,
   subscribeAuthUser,
   subscribeFoodPlaces,
+  subscribeTags,
   updatePlace as updatePlaceRemote,
 } from "@/lib/firebase/client";
 import {
@@ -24,6 +26,9 @@ import {
   type FoodInput,
 } from "@/lib/foods";
 import type { FoodPlace } from "@/lib/foods/types";
+import { buildRegistryMaps, placeMatchesOpenFacets } from "@/lib/tags";
+import { tagDocId } from "@/lib/tags/types";
+import type { TagDoc } from "@/lib/tags/types";
 
 import { FoodFormDialog } from "./food-form-client";
 import { FoodSocialLinks } from "./food-social-links";
@@ -31,6 +36,7 @@ import { FoodSocialLinks } from "./food-social-links";
 interface FoodsCatalogClientProps {
   bypass?: boolean;
   initialFoods: FoodPlace[];
+  initialTags: TagDoc[];
 }
 
 const FACET_META = [
@@ -43,6 +49,15 @@ const FACET_META = [
 ] as const;
 
 type FacetKey = (typeof FACET_META)[number]["key"];
+
+const STORAGE_FACET_BY_KEY: Record<FacetKey, string> = {
+  healthStyles: "healthStyle",
+  ingredients: "ingredients",
+  menus: "menus",
+  origins: "origins",
+  priceTiers: "priceTier",
+  servings: "servings",
+};
 
 function formatArea(area: string): string {
   if (area === "all") return "All areas";
@@ -120,8 +135,13 @@ function FoodBadges({ place }: { place: FoodPlace }) {
   );
 }
 
-export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalogClientProps) {
+export function FoodsCatalogClient({
+  bypass = false,
+  initialFoods,
+  initialTags,
+}: FoodsCatalogClientProps) {
   const [foods, setFoods] = useState<FoodPlace[]>(initialFoods);
+  const [tags, setTags] = useState<TagDoc[]>(initialTags);
   const [uid, setUid] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
@@ -130,6 +150,7 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
   const [selectedIngredients, setSelectedIngredients] = useState<string[]>([]);
   const [selectedOrigins, setSelectedOrigins] = useState<string[]>([]);
   const [selectedHealthStyles, setSelectedHealthStyles] = useState<string[]>([]);
+  const [selectedOpen, setSelectedOpen] = useState<Record<string, string[]>>({});
   const [area, setArea] = useState("all");
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [form, setForm] = useState<{ place: FoodPlace | null } | null>(null);
@@ -147,30 +168,52 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
     [],
   );
 
+  // Registry is advisory: empty or unreachable falls back to built-in behavior.
+  useEffect(() => subscribeTags(setTags, () => {}), []);
+
+  const maps = useMemo(() => (tags.length > 0 ? buildRegistryMaps(tags) : null), [tags]);
   const catalog = useMemo(() => deriveFacetCatalog(foods), [foods]);
   const catalogAreas = useMemo(() => deriveAreaCatalog(foods), [foods]);
   // One flat Tags list for discovery. Group order pins colliding values to the
   // same facet as contribution mapping (porridge→menus, mixed→ingredients).
+  // Registry-only values join the union; deprecated values never get a chip.
   const allTags = useMemo(() => {
     const seen = new Set<string>();
-    const tags: { facet: FacetKey; value: string }[] = [];
-    const groups: { facet: FacetKey; values: string[] }[] = [
-      { facet: "menus", values: catalog.menus },
-      { facet: "priceTiers", values: catalog.priceTiers },
-      { facet: "servings", values: catalog.servings },
-      { facet: "ingredients", values: catalog.ingredients },
-      { facet: "origins", values: catalog.origins },
-      { facet: "healthStyles", values: catalog.healthStyles },
+    const chips: { facet: string; key: FacetKey | null; value: string }[] = [];
+    const groups: { facet: FacetKey; storage: string; values: string[] }[] = [
+      { facet: "menus", storage: "menus", values: catalog.menus },
+      { facet: "priceTiers", storage: "priceTier", values: catalog.priceTiers },
+      { facet: "servings", storage: "servings", values: catalog.servings },
+      { facet: "ingredients", storage: "ingredients", values: catalog.ingredients },
+      { facet: "origins", storage: "origins", values: catalog.origins },
+      { facet: "healthStyles", storage: "healthStyle", values: catalog.healthStyles },
     ];
     for (const group of groups) {
       for (const value of group.values) {
         if (seen.has(value)) continue;
+        if (maps?.deprecatedIds.has(tagDocId(group.storage, value))) continue;
         seen.add(value);
-        tags.push({ facet: group.facet, value });
+        chips.push({ facet: group.storage, key: group.facet, value });
       }
     }
-    return tags.sort((a, b) => formatFacetValue(a.value).localeCompare(formatFacetValue(b.value)));
-  }, [catalog]);
+    if (maps) {
+      const keyByStorage = new Map<string, FacetKey>(
+        (Object.keys(STORAGE_FACET_BY_KEY) as FacetKey[]).map((key) => [
+          STORAGE_FACET_BY_KEY[key],
+          key,
+        ]),
+      );
+      maps.suggestionsByFacet.forEach((values, storage) => {
+        const key = keyByStorage.get(storage);
+        for (const value of values) {
+          if (seen.has(value)) continue;
+          seen.add(value);
+          chips.push({ facet: storage, key: key ?? null, value });
+        }
+      });
+    }
+    return chips.sort((a, b) => formatFacetValue(a.value).localeCompare(formatFacetValue(b.value)));
+  }, [catalog, maps]);
 
   const selectedByFacet: Record<FacetKey, string[]> = {
     healthStyles: selectedHealthStyles,
@@ -188,21 +231,32 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
     priceTiers: selectedPriceTiers.filter((value) => catalog.priceTiers.includes(value)),
     servings: selectedServings.filter((value) => catalog.servings.includes(value)),
   };
+  const visibleOpen: Record<string, string[]> = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const [facet, values] of Object.entries(selectedOpen)) {
+      const current = new Set(maps?.suggestionsByFacet.get(facet) ?? []);
+      out[facet] = values.filter((value) => current.has(value));
+    }
+    return out;
+  }, [maps, selectedOpen]);
   const effectiveArea = area === "all" || catalogAreas.includes(area) ? area : "all";
 
-  const visibleKey = JSON.stringify(visibleByFacet);
+  const visibleKey = JSON.stringify({ known: visibleByFacet, open: visibleOpen });
   const filtered = useMemo(() => {
-    const visible: Record<FacetKey, string[]> = JSON.parse(visibleKey);
+    const visible = JSON.parse(visibleKey) as {
+      known: Record<FacetKey, string[]>;
+      open: Record<string, string[]>;
+    };
     return filterFoods(foods, {
       area: effectiveArea,
-      healthStyles: visible.healthStyles,
-      ingredients: visible.ingredients,
-      menus: visible.menus,
-      origins: visible.origins,
-      priceTiers: visible.priceTiers,
+      healthStyles: visible.known.healthStyles,
+      ingredients: visible.known.ingredients,
+      menus: visible.known.menus,
+      origins: visible.known.origins,
+      priceTiers: visible.known.priceTiers,
       search,
-      servings: visible.servings,
-    });
+      servings: visible.known.servings,
+    }).filter((place) => placeMatchesOpenFacets(place, visible.open));
   }, [foods, effectiveArea, search, visibleKey]);
   const picked = pickedId ? (foods.find((place) => place.id === pickedId) ?? null) : null;
 
@@ -210,6 +264,17 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
     setter((prev) =>
       prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value],
     );
+    setPickedId(null);
+  }
+
+  function toggleOpenFacet(facet: string, value: string): void {
+    setSelectedOpen((prev) => {
+      const current = prev[facet] ?? [];
+      const next = current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value];
+      return { ...prev, [facet]: next };
+    });
     setPickedId(null);
   }
 
@@ -237,6 +302,7 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
     setSelectedIngredients([]);
     setSelectedOrigins([]);
     setSelectedHealthStyles([]);
+    setSelectedOpen({});
   }
 
   function openCreate(event: MouseEvent<HTMLButtonElement>): void {
@@ -305,7 +371,8 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
   const isFiltered =
     search.trim() !== "" ||
     area !== "all" ||
-    Object.values(selectedByFacet).some((selected) => selected.length > 0);
+    Object.values(selectedByFacet).some((selected) => selected.length > 0) ||
+    Object.values(selectedOpen).some((selected) => selected.length > 0);
 
   return (
     <div className="grid gap-10">
@@ -326,13 +393,17 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
           <div className="grid gap-2.5">
             <p className="text-sm font-medium">Tags</p>
             <div className="flex flex-wrap gap-2.5">
-              {allTags.map(({ facet, value }) => {
-                const active = visibleByFacet[facet].includes(value);
+              {allTags.map(({ facet, key, value }) => {
+                const active = key
+                  ? visibleByFacet[key].includes(value)
+                  : ((visibleOpen[facet] ?? []).includes(value) as boolean);
                 return (
                   <Button
                     aria-pressed={active}
                     key={value}
-                    onClick={() => toggleIn(setters[facet], value)}
+                    onClick={() =>
+                      key ? toggleIn(setters[key], value) : toggleOpenFacet(facet, value)
+                    }
                     size="sm"
                     variant={active ? "default" : "outline"}
                   >
@@ -376,7 +447,10 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Shared catalog — changes appear for everyone instantly.
+          Shared catalog — changes appear for everyone instantly.{" "}
+          <Link className="underline" href="/foods/tags">
+            Manage the tag registry
+          </Link>
         </p>
       </div>
 
@@ -493,6 +567,7 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
           onSubmit={handleFormSubmit}
           open
           place={form.place}
+          registryTags={tags}
         />
       )}
     </div>

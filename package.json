@@ -12,6 +12,7 @@
     "seed:foods": "tsx --env-file=.env.local scripts/seed-foods.ts",
     "seed:migrate-areas": "tsx --env-file=.env.local scripts/migrate-food-areas.ts",
     "seed:migrate-facets": "tsx --env-file=.env.local scripts/migrate-food-facets.ts",
+    "seed:tags": "tsx --env-file=.env.local scripts/seed-tags.ts",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit"
   },
