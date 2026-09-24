@@ -1,7 +1,7 @@
 # What-2-Eat — Tag Rename / Merge, Title-Rename UX (PRD)
 
 - Date: 2026-09-24
-- Status: PRD only, not implemented.
+- Status: implemented, UNVERIFIED. RenameBox replaces MergeBox (same-facet rename, merge-on-existing, production apply); `oxlint`, `oxfmt --check`, and `tsc --noEmit` pass. Pending: owner-verified emulator smoke (reseed → rename new value + merge onto existing).
 - Supplements: `2026-09-24-what-2-eat-tag-registry.md` (registry + MergeBox with facet + value inputs + emulator-only apply). This doc simplifies that to same-facet rename and enables apply everywhere.
 - Locked decisions (from planning session 2026-09-24): same-facet only / rename-onto-existing = merge / apply enabled in production / all logged-in users may rename (inherits registry posture, no admin allowlist).
 - Session scope: PRD only. No implementation.
