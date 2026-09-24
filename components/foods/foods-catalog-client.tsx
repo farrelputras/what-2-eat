@@ -31,6 +31,7 @@ import type { TagDoc } from "@/lib/tags/types";
 
 import { FoodFormDialog } from "./food-form-client";
 import { FoodSocialLinks } from "./food-social-links";
+import { ShuffleReel } from "./shuffle-reveal-client";
 
 interface FoodsCatalogClientProps {
   bypass?: boolean;
@@ -61,6 +62,26 @@ const STORAGE_FACET_BY_KEY: Record<FacetKey, string> = {
 function formatArea(area: string): string {
   if (area === "all") return "All areas";
   return area.charAt(0).toUpperCase() + area.slice(1);
+}
+
+const REEL_LENGTH = 28;
+const OVERSHOOT_ITEMS = 4;
+
+function buildReel(pool: FoodPlace[], winner: FoodPlace): { names: string[]; winnerIndex: number } {
+  const names: string[] = [];
+  const start = Math.floor(Math.random() * pool.length);
+  for (let i = 0; i < REEL_LENGTH - 1; i++) {
+    names.push(pool[(start + i) % pool.length].name);
+  }
+  if (names[names.length - 1] === winner.name) {
+    names[names.length - 1] = pool[(start + REEL_LENGTH) % pool.length].name;
+  }
+  const winnerIndex = names.length;
+  names.push(winner.name);
+  for (let j = 1; j <= OVERSHOOT_ITEMS; j++) {
+    names.push(pool[(start + REEL_LENGTH - 1 + j) % pool.length].name);
+  }
+  return { names, winnerIndex };
 }
 
 function FoodBadges({ place }: { place: FoodPlace }) {
@@ -157,10 +178,15 @@ export function FoodsCatalogClient({
   const [saving, setSaving] = useState(false);
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
   const [spinning, setSpinning] = useState(false);
-  const [cyclingName, setCyclingName] = useState<string | null>(null);
+  const [reel, setReel] = useState<{
+    names: string[];
+    spinId: number;
+    winnerId: string;
+    winnerIndex: number;
+  } | null>(null);
   const [pulseId, setPulseId] = useState<string | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
-  const spinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spinIdRef = useRef(0);
   const pulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function prefersReducedMotion(): boolean {
@@ -170,17 +196,12 @@ export function FoodsCatalogClient({
   }
 
   function cancelSpin(): void {
-    if (spinTimeoutRef.current) {
-      clearTimeout(spinTimeoutRef.current);
-      spinTimeoutRef.current = null;
-    }
     setSpinning(false);
-    setCyclingName(null);
+    setReel(null);
   }
 
   useEffect(
     () => () => {
-      if (spinTimeoutRef.current) clearTimeout(spinTimeoutRef.current);
       if (pulseTimeoutRef.current) clearTimeout(pulseTimeoutRef.current);
     },
     [],
@@ -326,33 +347,24 @@ export function FoodsCatalogClient({
 
   function handleShuffle(): void {
     if (spinning || pool.length === 0) return;
+    const winner = pickRandomFood(pool);
+    if (!winner) return;
     if (pool.length === 1 || prefersReducedMotion()) {
-      setPickedId(pickRandomFood(pool)?.id ?? null);
+      setPickedId(winner.id);
       return;
     }
-    const snapshot = [...pool];
     cancelSpin();
     setPickedId(null);
+    spinIdRef.current += 1;
+    setReel({ ...buildReel(pool, winner), spinId: spinIdRef.current, winnerId: winner.id });
     setSpinning(true);
-    const totalTicks = 12;
-    let tick = 0;
-    function scheduleNext(): void {
-      const delay = Math.min(55 * Math.pow(1.18, tick), 230);
-      spinTimeoutRef.current = setTimeout(() => {
-        tick += 1;
-        if (tick >= totalTicks) {
-          spinTimeoutRef.current = null;
-          setCyclingName(null);
-          setSpinning(false);
-          setPickedId(pickRandomFood(snapshot)?.id ?? null);
-          return;
-        }
-        setCyclingName(pickRandomFood(snapshot)?.name ?? null);
-        scheduleNext();
-      }, delay);
-    }
-    setCyclingName(pickRandomFood(snapshot)?.name ?? null);
-    scheduleNext();
+  }
+
+  function handleLanded(): void {
+    if (!reel) return;
+    setPickedId(reel.winnerId);
+    setReel(null);
+    setSpinning(false);
   }
 
   function toggleExclude(id: string): void {
@@ -591,17 +603,13 @@ export function FoodsCatalogClient({
         {pool.length === 0 && filtered.length > 0 && (
           <p className="text-sm text-muted-foreground">Select at least 1 place to shuffle</p>
         )}
-        {spinning && (
-          <div
-            className="rounded-lg border bg-card p-5 grid gap-2.5 min-h-44"
-            role="status"
-            aria-label="Shuffling places"
-          >
-            <p className="text-sm text-muted-foreground">Shuffling…</p>
-            <p className="text-2xl font-semibold" aria-hidden="true">
-              {cyclingName ?? "…"}
-            </p>
-          </div>
+        {spinning && reel && (
+          <ShuffleReel
+            key={reel.spinId}
+            names={reel.names}
+            onLand={handleLanded}
+            winnerIndex={reel.winnerIndex}
+          />
         )}
         {!spinning && picked && (
           <div
