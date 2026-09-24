@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { FoodPlace, HealthStyle, PriceTier } from "./types";
+import type { FoodPlace, FoodTags, HealthStyle, PriceTier } from "./types";
 import {
   HEALTH_STYLE_VOCAB,
   INGREDIENT_VOCAB,
@@ -23,28 +23,18 @@ export interface FoodFilters {
 
 export interface FoodInput {
   areas: string[];
-  healthStyle?: HealthStyle;
-  ingredients: string[];
   instagramUrl?: string;
-  menus: string[];
   name: string;
-  origins: string[];
-  priceTier?: PriceTier;
-  servings: string[];
+  tags: FoodTags;
   tiktokUrl?: string;
 }
 
 export interface FoodInputErrors {
   areas?: string;
   facets?: string;
-  healthStyle?: string;
-  ingredients?: string;
   instagramUrl?: string;
-  menus?: string;
   name?: string;
-  origins?: string;
-  priceTier?: string;
-  servings?: string;
+  tags?: string;
   tiktokUrl?: string;
 }
 
@@ -64,23 +54,35 @@ export const MAX_SERVINGS_PER_PLACE = 2;
 export const MAX_INGREDIENTS_PER_PLACE = 5;
 export const MAX_ORIGINS_PER_PLACE = 3;
 export const MAX_FACET_VALUES_PER_PLACE = 8;
+export const MAX_PENDING_PER_PLACE = 8;
+export const MAX_PENDING_TAG_LENGTH = 24;
 
 export const MAX_FOOD_URL_LENGTH = 300;
 
 export const FOOD_AREAS = ["batam", "malang", "surabaya"] as const;
 
-const foodInputSchema = z.object({
-  areas: z.enum(FOOD_AREAS).array().min(1).max(3),
+const foodTagsSchema = z.object({
   healthStyle: z.enum(HEALTH_STYLE_VOCAB).optional(),
   ingredients: z.enum(INGREDIENT_VOCAB).array().max(MAX_INGREDIENTS_PER_PLACE),
-  instagramUrl: z.string().max(MAX_FOOD_URL_LENGTH).optional(),
   menus: z.enum(MENU_VOCAB).array().max(MAX_MENUS_PER_PLACE),
-  name: z.string().min(1).max(80),
   origins: z.enum(ORIGIN_VOCAB).array().max(MAX_ORIGINS_PER_PLACE),
+  pending: z.string().min(1).max(MAX_PENDING_TAG_LENGTH).array().max(MAX_PENDING_PER_PLACE),
   priceTier: z.enum(PRICE_TIER_VOCAB).optional(),
   servings: z.enum(SERVING_VOCAB).array().max(MAX_SERVINGS_PER_PLACE),
-  tiktokUrl: z.string().max(MAX_FOOD_URL_LENGTH).optional(),
 });
+
+const foodInputSchema = z
+  .object({
+    areas: z.enum(FOOD_AREAS).array().min(1).max(3),
+    instagramUrl: z.string().max(MAX_FOOD_URL_LENGTH).optional(),
+    name: z.string().min(1).max(80),
+    tags: foodTagsSchema,
+    tiktokUrl: z.string().max(MAX_FOOD_URL_LENGTH).optional(),
+  })
+  .refine((value) => countFacetValues(value.tags) <= MAX_FACET_VALUES_PER_PLACE, {
+    message: "Maximum 8 facet values total",
+    path: ["tags"],
+  });
 
 export function normalizeSearch(value: string): string {
   return value.trim().toLowerCase();
@@ -131,48 +133,178 @@ function normalizeSingle(value: unknown, vocab: readonly string[]): string | und
   return (vocab as readonly string[]).includes(trimmed) ? trimmed : undefined;
 }
 
-export function normalizeFoodFacets(input: {
-  healthStyle?: unknown;
-  ingredients?: unknown;
-  menus?: unknown;
-  origins?: unknown;
-  priceTier?: unknown;
-  servings?: unknown;
-}): {
-  healthStyle?: HealthStyle;
-  ingredients: string[];
-  menus: string[];
-  origins: string[];
-  priceTier?: PriceTier;
-  servings: string[];
-} {
-  const priceTier = normalizeSingle(input.priceTier, PRICE_TIER_VOCAB);
-  const healthStyle = normalizeSingle(input.healthStyle, HEALTH_STYLE_VOCAB);
+function normalizePending(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    if (typeof raw !== "string") continue;
+    const value = raw.trim().toLowerCase();
+    if (value === "" || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+    if (out.length >= MAX_PENDING_PER_PLACE) break;
+  }
+  return out;
+}
+
+export function normalizeFoodTags(input: unknown): FoodTags {
+  const data =
+    typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+  const priceTier = normalizeSingle(data["priceTier"], PRICE_TIER_VOCAB);
+  const healthStyle = normalizeSingle(data["healthStyle"], HEALTH_STYLE_VOCAB);
   return {
     ...(healthStyle ? { healthStyle: healthStyle as HealthStyle } : {}),
-    ingredients: normalizeMulti(input.ingredients, INGREDIENT_VOCAB, MAX_INGREDIENTS_PER_PLACE),
-    menus: normalizeMulti(input.menus, MENU_VOCAB, MAX_MENUS_PER_PLACE),
-    origins: normalizeMulti(input.origins, ORIGIN_VOCAB, MAX_ORIGINS_PER_PLACE),
+    ingredients: normalizeMulti(data["ingredients"], INGREDIENT_VOCAB, MAX_INGREDIENTS_PER_PLACE),
+    menus: normalizeMulti(data["menus"], MENU_VOCAB, MAX_MENUS_PER_PLACE),
+    origins: normalizeMulti(data["origins"], ORIGIN_VOCAB, MAX_ORIGINS_PER_PLACE),
+    pending: normalizePending(data["pending"]),
     ...(priceTier ? { priceTier: priceTier as PriceTier } : {}),
-    servings: normalizeMulti(input.servings, SERVING_VOCAB, MAX_SERVINGS_PER_PLACE),
+    servings: normalizeMulti(data["servings"], SERVING_VOCAB, MAX_SERVINGS_PER_PLACE),
   };
 }
 
-export function countFacetValues(place: {
-  healthStyle?: string;
-  ingredients: string[];
-  menus: string[];
-  origins: string[];
-  priceTier?: string;
-  servings: string[];
-}): number {
+const DISH_TO_MENU: Record<string, string> = {
+  bakso: "soup",
+  rawon: "soup",
+  soto: "soup",
+};
+
+const FACET_PREFIXES: Record<string, keyof Omit<FoodTags, "pending">> = {
+  health: "healthStyle",
+  healthstyle: "healthStyle",
+  ingredient: "ingredients",
+  ingredients: "ingredients",
+  menu: "menus",
+  menus: "menus",
+  origin: "origins",
+  origins: "origins",
+  price: "priceTier",
+  pricetier: "priceTier",
+  serving: "servings",
+  servings: "servings",
+  style: "healthStyle",
+};
+
+const VOCAB_BY_FACET: Record<keyof Omit<FoodTags, "pending">, ReadonlySet<string>> = {
+  healthStyle: new Set<string>(HEALTH_STYLE_VOCAB),
+  ingredients: new Set<string>(INGREDIENT_VOCAB),
+  menus: new Set<string>(MENU_VOCAB),
+  origins: new Set<string>(ORIGIN_VOCAB),
+  priceTier: new Set<string>(PRICE_TIER_VOCAB),
+  servings: new Set<string>(SERVING_VOCAB),
+};
+
+function facetForValue(value: string): keyof Omit<FoodTags, "pending"> | undefined {
+  const facets: (keyof Omit<FoodTags, "pending">)[] = [
+    "menus",
+    "servings",
+    "ingredients",
+    "origins",
+    "priceTier",
+    "healthStyle",
+  ];
+  for (const facet of facets) {
+    if (VOCAB_BY_FACET[facet].has(value)) return facet;
+  }
+  return undefined;
+}
+
+export function mapFreeTextToTags(tokens: string[]): { tags: FoodTags } {
+  const menus: string[] = [];
+  const servings: string[] = [];
+  const ingredients: string[] = [];
+  const origins: string[] = [];
+  const pending: string[] = [];
+  let priceTier: PriceTier | undefined;
+  let healthStyle: HealthStyle | undefined;
+
+  function addMulti(list: string[], value: string): void {
+    if (!list.includes(value)) list.push(value);
+  }
+
+  function addPending(token: string): void {
+    const value = token.trim().toLowerCase();
+    if (value === "" || pending.includes(value)) return;
+    pending.push(value);
+  }
+
+  function assignResolved(facet: keyof Omit<FoodTags, "pending">, value: string): void {
+    if (facet === "menus") addMulti(menus, value);
+    else if (facet === "servings") addMulti(servings, value);
+    else if (facet === "ingredients") addMulti(ingredients, value);
+    else if (facet === "origins") addMulti(origins, value);
+    else if (facet === "priceTier") priceTier = value as PriceTier;
+    else healthStyle = value as HealthStyle;
+  }
+
+  for (const raw of tokens) {
+    const token = raw.trim().toLowerCase();
+    if (token === "") continue;
+    const colon = token.indexOf(":");
+    if (colon !== -1) {
+      const facet = FACET_PREFIXES[token.slice(0, colon).replace(/[^a-z]/g, "")];
+      const value = token.slice(colon + 1).trim();
+      if (facet && VOCAB_BY_FACET[facet].has(value)) assignResolved(facet, value);
+      else addPending(token);
+      continue;
+    }
+    const dishParent = DISH_TO_MENU[token];
+    if (dishParent) {
+      addMulti(menus, dishParent);
+      continue;
+    }
+    // Bare porridge/mixed collide across vocabs; pin each to one facet so the
+    // mapping stays deterministic. facet:value prefixes select explicitly.
+    if (token === "porridge") {
+      addMulti(menus, token);
+      continue;
+    }
+    if (token === "mixed") {
+      addMulti(ingredients, token);
+      continue;
+    }
+    const facet = facetForValue(token);
+    if (facet) assignResolved(facet, token);
+    else addPending(token);
+  }
+
+  return {
+    tags: {
+      ...(healthStyle ? { healthStyle } : {}),
+      ingredients,
+      menus,
+      origins,
+      pending,
+      ...(priceTier ? { priceTier } : {}),
+      servings,
+    },
+  };
+}
+
+// Serialize tags back to tokens for the edit form. Values that would re-map to
+// a different facet bare (ingredients porridge, origins mixed) keep a prefix.
+export function foodTagsToTokens(tags: FoodTags): string[] {
+  const tokens: string[] = [];
+  for (const value of tags.menus) tokens.push(value);
+  if (tags.priceTier) tokens.push(tags.priceTier);
+  for (const value of tags.servings) tokens.push(value);
+  for (const value of tags.ingredients)
+    tokens.push(value === "porridge" ? "ingredient:porridge" : value);
+  for (const value of tags.origins) tokens.push(value === "mixed" ? "origin:mixed" : value);
+  if (tags.healthStyle) tokens.push(tags.healthStyle);
+  for (const value of tags.pending) tokens.push(value);
+  return tokens;
+}
+
+export function countFacetValues(tags: FoodTags): number {
   return (
-    place.menus.length +
-    place.servings.length +
-    place.ingredients.length +
-    place.origins.length +
-    (place.priceTier ? 1 : 0) +
-    (place.healthStyle ? 1 : 0)
+    tags.menus.length +
+    tags.servings.length +
+    tags.ingredients.length +
+    tags.origins.length +
+    (tags.priceTier ? 1 : 0) +
+    (tags.healthStyle ? 1 : 0)
   );
 }
 
@@ -196,23 +328,22 @@ export function validateFoodInput(
   existing: FoodPlace[],
   excludeId?: string,
 ): FoodInputErrors {
-  const facets = normalizeFoodFacets(input);
+  const tags = normalizeFoodTags(input.tags);
   const normalized: FoodInput = {
     areas: normalizeFoodAreas(input.areas),
-    ...(facets.healthStyle ? { healthStyle: facets.healthStyle } : {}),
-    ingredients: facets.ingredients,
     instagramUrl: normalizeFoodUrl(input.instagramUrl),
-    menus: facets.menus,
     name: normalizeFoodName(input.name),
-    origins: facets.origins,
-    ...(facets.priceTier ? { priceTier: facets.priceTier } : {}),
-    servings: facets.servings,
+    tags,
     tiktokUrl: normalizeFoodUrl(input.tiktokUrl),
   };
   const parsed = foodInputSchema.safeParse(normalized);
   const errors: FoodInputErrors = {};
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
+      if (issue.code === "custom") {
+        if (!errors.facets) errors.facets = "Maximum 8 facet values total";
+        continue;
+      }
       const field = issue.path[0];
       if (field === "name" && !errors.name) {
         errors.name =
@@ -221,18 +352,15 @@ export function validateFoodInput(
             : "Place name is required";
       } else if (field === "areas" && !errors.areas) {
         errors.areas = "Select at least 1 area";
-      } else if (field === "menus" && !errors.menus) {
-        errors.menus = "Maximum 3 menu forms";
-      } else if (field === "servings" && !errors.servings) {
-        errors.servings = "Maximum 2 servings";
-      } else if (field === "ingredients" && !errors.ingredients) {
-        errors.ingredients = "Maximum 5 ingredients";
-      } else if (field === "origins" && !errors.origins) {
-        errors.origins = "Maximum 3 origins";
-      } else if (field === "priceTier" && !errors.priceTier) {
-        errors.priceTier = "Invalid price tier";
-      } else if (field === "healthStyle" && !errors.healthStyle) {
-        errors.healthStyle = "Invalid style";
+      } else if (field === "tags" && !errors.tags) {
+        const sub = issue.path[1];
+        if (sub === "menus") errors.tags = "Maximum 3 menu forms";
+        else if (sub === "servings") errors.tags = "Maximum 2 servings";
+        else if (sub === "ingredients") errors.tags = "Maximum 5 ingredients";
+        else if (sub === "origins") errors.tags = "Maximum 3 origins";
+        else if (sub === "pending") errors.tags = "Each tag must be 1-24 characters (max 8)";
+        else if (sub === "priceTier") errors.tags = "Invalid price tier";
+        else if (sub === "healthStyle") errors.tags = "Invalid style";
       } else if (field === "instagramUrl" && !errors.instagramUrl) {
         errors.instagramUrl = `Link must be at most ${MAX_FOOD_URL_LENGTH} characters`;
       } else if (field === "tiktokUrl" && !errors.tiktokUrl) {
@@ -240,17 +368,16 @@ export function validateFoodInput(
       }
     }
   }
-  if (
-    countFacetValues({
-      healthStyle: normalized.healthStyle,
-      ingredients: normalized.ingredients,
-      menus: normalized.menus,
-      origins: normalized.origins,
-      priceTier: normalized.priceTier,
-      servings: normalized.servings,
-    }) > MAX_FACET_VALUES_PER_PLACE &&
-    !errors.facets
-  ) {
+  if (!errors.tags) {
+    const raw = input.tags;
+    if (raw.menus.length > MAX_MENUS_PER_PLACE) errors.tags = "Maximum 3 menu forms";
+    else if (raw.servings.length > MAX_SERVINGS_PER_PLACE) errors.tags = "Maximum 2 servings";
+    else if (raw.ingredients.length > MAX_INGREDIENTS_PER_PLACE)
+      errors.tags = "Maximum 5 ingredients";
+    else if (raw.origins.length > MAX_ORIGINS_PER_PLACE) errors.tags = "Maximum 3 origins";
+    else if (raw.pending.length > MAX_PENDING_PER_PLACE) errors.tags = "Maximum 8 pending tags";
+  }
+  if (countFacetValues(tags) > MAX_FACET_VALUES_PER_PLACE && !errors.facets) {
     errors.facets = "Maximum 8 facet values total";
   }
   if (!errors.instagramUrl && normalized.instagramUrl !== undefined) {
@@ -294,19 +421,23 @@ export function filterFoods(foods: FoodPlace[], filters: FoodFilters): FoodPlace
   const healthStyles = new Set(filters.healthStyles);
 
   return foods.filter((place) => {
+    const tags = place.tags;
     if (area !== "" && area !== "all" && !place.areas.some((item) => item.toLowerCase() === area))
       return false;
-    if (menus.size > 0 && !(place.menus ?? []).some((value) => menus.has(value))) return false;
-    if (priceTiers.size > 0 && !(place.priceTier && priceTiers.has(place.priceTier))) return false;
-    if (servings.size > 0 && !(place.servings ?? []).some((value) => servings.has(value)))
+    if (menus.size > 0 && !tags.menus.some((value) => menus.has(value))) return false;
+    if (priceTiers.size > 0 && !(tags.priceTier && priceTiers.has(tags.priceTier))) return false;
+    if (servings.size > 0 && !tags.servings.some((value) => servings.has(value))) return false;
+    if (ingredients.size > 0 && !tags.ingredients.some((value) => ingredients.has(value)))
       return false;
-    if (ingredients.size > 0 && !(place.ingredients ?? []).some((value) => ingredients.has(value)))
+    if (origins.size > 0 && !tags.origins.some((value) => origins.has(value))) return false;
+    if (healthStyles.size > 0 && !(tags.healthStyle && healthStyles.has(tags.healthStyle)))
       return false;
-    if (origins.size > 0 && !(place.origins ?? []).some((value) => origins.has(value)))
+    if (
+      query !== "" &&
+      !place.name.toLowerCase().includes(query) &&
+      !tags.pending.some((token) => token.toLowerCase().includes(query))
+    )
       return false;
-    if (healthStyles.size > 0 && !(place.healthStyle && healthStyles.has(place.healthStyle)))
-      return false;
-    if (query !== "" && !place.name.toLowerCase().includes(query)) return false;
     return true;
   });
 }
@@ -328,12 +459,12 @@ function sortedUnique(values: (string | undefined)[]): string[] {
 
 export function deriveFacetCatalog(foods: FoodPlace[]): FacetCatalog {
   return {
-    healthStyles: sortedUnique(foods.map((place) => place.healthStyle)),
-    ingredients: sortedUnique(foods.flatMap((place) => place.ingredients ?? [])),
-    menus: sortedUnique(foods.flatMap((place) => place.menus ?? [])),
-    origins: sortedUnique(foods.flatMap((place) => place.origins ?? [])),
-    priceTiers: sortedUnique(foods.map((place) => place.priceTier)),
-    servings: sortedUnique(foods.flatMap((place) => place.servings ?? [])),
+    healthStyles: sortedUnique(foods.map((place) => place.tags.healthStyle)),
+    ingredients: sortedUnique(foods.flatMap((place) => place.tags.ingredients)),
+    menus: sortedUnique(foods.flatMap((place) => place.tags.menus)),
+    origins: sortedUnique(foods.flatMap((place) => place.tags.origins)),
+    priceTiers: sortedUnique(foods.map((place) => place.tags.priceTier)),
+    servings: sortedUnique(foods.flatMap((place) => place.tags.servings)),
   };
 }
 

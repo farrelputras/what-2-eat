@@ -1,169 +1,220 @@
 [
   {
     "areas": ["surabaya"],
-    "healthStyle": "everyday",
     "id": "yoshinoya",
-    "ingredients": ["rice", "beef", "chicken"],
-    "menus": ["rice-bowl"],
     "name": "Yoshinoya",
-    "origins": ["japanese"],
-    "priceTier": "regular",
-    "servings": ["meal"]
+    "tags": {
+      "healthStyle": "everyday",
+      "ingredients": ["rice", "beef", "chicken"],
+      "menus": ["rice-bowl"],
+      "origins": ["japanese"],
+      "pending": [],
+      "priceTier": "regular",
+      "servings": ["meal"]
+    }
   },
   {
     "areas": ["surabaya"],
-    "healthStyle": "everyday",
     "id": "dikichi",
-    "ingredients": ["rice", "chicken"],
-    "menus": ["rice-bowl"],
     "name": "Dikichi",
-    "origins": ["japanese"],
-    "servings": ["meal"]
+    "tags": {
+      "healthStyle": "everyday",
+      "ingredients": ["rice", "chicken"],
+      "menus": ["rice-bowl"],
+      "origins": ["japanese"],
+      "pending": [],
+      "servings": ["meal"]
+    }
   },
   {
     "areas": ["surabaya"],
-    "healthStyle": "everyday",
     "id": "selamat-sukses",
-    "ingredients": ["rice"],
-    "menus": ["rice-bowl"],
     "name": "Selamat Sukses (Kecombrang)",
-    "origins": ["indonesian"],
-    "servings": ["meal"]
+    "tags": {
+      "healthStyle": "everyday",
+      "ingredients": ["rice"],
+      "menus": ["rice-bowl"],
+      "origins": ["indonesian"],
+      "pending": [],
+      "servings": ["meal"]
+    }
   },
   {
     "areas": ["surabaya"],
     "id": "subway",
-    "ingredients": ["beef", "chicken"],
-    "menus": ["sandwich"],
     "name": "Subway",
-    "origins": ["western"],
-    "servings": []
+    "tags": {
+      "ingredients": ["beef", "chicken"],
+      "menus": ["sandwich"],
+      "origins": ["western"],
+      "pending": [],
+      "servings": []
+    }
   },
   {
     "areas": ["surabaya"],
-    "healthStyle": "fresh",
     "id": "greenly",
-    "ingredients": ["none"],
-    "menus": ["salad"],
     "name": "Greenly",
-    "origins": ["western"],
-    "servings": []
+    "tags": {
+      "healthStyle": "fresh",
+      "ingredients": ["none"],
+      "menus": ["salad"],
+      "origins": ["western"],
+      "pending": [],
+      "servings": []
+    }
   },
   {
     "areas": ["surabaya"],
-    "healthStyle": "comfort",
     "id": "dominos-pizza",
-    "ingredients": [],
-    "menus": ["pizza"],
     "name": "Domino's Pizza",
-    "origins": ["western"],
-    "servings": []
+    "tags": {
+      "healthStyle": "comfort",
+      "ingredients": [],
+      "menus": ["pizza"],
+      "origins": ["western"],
+      "pending": [],
+      "servings": []
+    }
   },
   {
     "areas": ["surabaya"],
-    "healthStyle": "comfort",
     "id": "pizza-hut",
-    "ingredients": [],
-    "menus": ["pizza", "pasta"],
     "name": "Pizza Hut",
-    "origins": ["western"],
-    "servings": []
+    "tags": {
+      "healthStyle": "comfort",
+      "ingredients": [],
+      "menus": ["pizza", "pasta"],
+      "origins": ["western"],
+      "pending": [],
+      "servings": []
+    }
   },
   {
     "areas": ["surabaya"],
-    "healthStyle": "everyday",
     "id": "warkam",
-    "ingredients": ["rice", "noodles"],
-    "menus": ["noodle-bowl", "rice-bowl"],
     "name": "Warkam",
-    "origins": ["indonesian"],
-    "servings": ["meal"]
+    "tags": {
+      "healthStyle": "everyday",
+      "ingredients": ["rice", "noodles"],
+      "menus": ["noodle-bowl", "rice-bowl"],
+      "origins": ["indonesian"],
+      "pending": [],
+      "servings": ["meal"]
+    }
   },
   {
     "areas": ["surabaya"],
     "id": "j-one",
-    "ingredients": [],
-    "menus": [],
     "name": "J-One",
-    "origins": ["japanese"],
-    "servings": []
+    "tags": {
+      "ingredients": [],
+      "menus": [],
+      "origins": ["japanese"],
+      "pending": [],
+      "servings": []
+    }
   },
   {
     "areas": ["surabaya"],
-    "healthStyle": "everyday",
     "id": "soto-cak-har",
-    "ingredients": ["chicken"],
-    "menus": ["soup"],
     "name": "Soto Cak Har",
-    "origins": ["indonesian"],
-    "servings": ["meal"]
+    "tags": {
+      "healthStyle": "everyday",
+      "ingredients": ["chicken"],
+      "menus": ["soup"],
+      "origins": ["indonesian"],
+      "pending": [],
+      "servings": ["meal"]
+    }
   },
   {
     "areas": ["surabaya"],
-    "healthStyle": "everyday",
     "id": "mie-gacoan",
-    "ingredients": ["noodles"],
-    "menus": ["noodle-bowl"],
     "name": "Mie Gacoan",
-    "origins": ["indonesian"],
-    "servings": ["meal"]
+    "tags": {
+      "healthStyle": "everyday",
+      "ingredients": ["noodles"],
+      "menus": ["noodle-bowl"],
+      "origins": ["indonesian"],
+      "pending": [],
+      "servings": ["meal"]
+    }
   },
   {
     "areas": ["surabaya"],
-    "healthStyle": "everyday",
     "id": "uncle-w",
-    "ingredients": ["rice"],
-    "menus": ["rice-bowl"],
     "name": "Uncle W",
-    "origins": ["chinese"],
-    "servings": ["meal"]
+    "tags": {
+      "healthStyle": "everyday",
+      "ingredients": ["rice"],
+      "menus": ["rice-bowl"],
+      "origins": ["chinese"],
+      "pending": [],
+      "servings": ["meal"]
+    }
   },
   {
     "areas": ["surabaya"],
-    "healthStyle": "comfort",
     "id": "mcdonalds",
-    "ingredients": ["chicken"],
-    "menus": ["burger", "fried-chicken"],
     "name": "McDonald's",
-    "origins": ["western"],
-    "servings": ["meal", "snack"]
+    "tags": {
+      "healthStyle": "comfort",
+      "ingredients": ["chicken"],
+      "menus": ["burger", "fried-chicken"],
+      "origins": ["western"],
+      "pending": [],
+      "servings": ["meal", "snack"]
+    }
   },
   {
     "areas": ["surabaya"],
-    "healthStyle": "comfort",
     "id": "kfc",
-    "ingredients": ["chicken"],
-    "menus": ["burger", "fried-chicken"],
     "name": "KFC",
-    "origins": [],
-    "servings": ["meal", "snack"]
+    "tags": {
+      "healthStyle": "comfort",
+      "ingredients": ["chicken"],
+      "menus": ["burger", "fried-chicken"],
+      "origins": [],
+      "pending": [],
+      "servings": ["meal", "snack"]
+    }
   },
   {
     "areas": ["surabaya"],
-    "healthStyle": "everyday",
     "id": "sushi-go",
-    "ingredients": ["rice"],
-    "menus": ["sushi"],
     "name": "Sushi Go!",
-    "origins": ["japanese"],
-    "servings": []
+    "tags": {
+      "healthStyle": "everyday",
+      "ingredients": ["rice"],
+      "menus": ["sushi"],
+      "origins": ["japanese"],
+      "pending": [],
+      "servings": []
+    }
   },
   {
     "areas": ["surabaya"],
     "id": "aeon",
-    "ingredients": [],
-    "menus": [],
     "name": "AEON",
-    "origins": ["japanese"],
-    "servings": []
+    "tags": {
+      "ingredients": [],
+      "menus": [],
+      "origins": ["japanese"],
+      "pending": [],
+      "servings": []
+    }
   },
   {
     "areas": ["surabaya"],
     "id": "taria",
-    "ingredients": [],
-    "menus": ["coffee", "beverage"],
     "name": "Taria",
-    "origins": [],
-    "servings": ["snack"]
+    "tags": {
+      "ingredients": [],
+      "menus": ["coffee", "beverage"],
+      "origins": [],
+      "pending": [],
+      "servings": ["snack"]
+    }
   }
 ]

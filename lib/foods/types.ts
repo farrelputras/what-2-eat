@@ -62,16 +62,21 @@ export const HEALTH_STYLE_VOCAB = ["comfort", "everyday", "fresh"] as const;
 
 export type HealthStyle = (typeof HEALTH_STYLE_VOCAB)[number];
 
-export interface FoodPlace {
-  areas: string[];
+export interface FoodTags {
   healthStyle?: HealthStyle;
-  id: string;
   ingredients: string[];
-  instagramUrl?: string;
   menus: string[];
-  name: string;
   origins: string[];
+  pending: string[];
   priceTier?: PriceTier;
   servings: string[];
+}
+
+export interface FoodPlace {
+  areas: string[];
+  id: string;
+  instagramUrl?: string;
+  name: string;
+  tags: FoodTags;
   tiktokUrl?: string;
 }

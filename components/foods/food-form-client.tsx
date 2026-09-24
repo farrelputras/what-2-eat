@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { cn } from "cn";
+import { XIcon } from "lucide-react";
+import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,11 +17,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   FOOD_AREAS,
-  MAX_INGREDIENTS_PER_PLACE,
-  MAX_MENUS_PER_PLACE,
-  MAX_ORIGINS_PER_PLACE,
-  MAX_SERVINGS_PER_PLACE,
+  foodTagsToTokens,
   formatFacetValue,
+  mapFreeTextToTags,
   validateFoodInput,
   type FoodInput,
   type FoodInputErrors,
@@ -30,10 +31,9 @@ import {
   ORIGIN_VOCAB,
   PRICE_TIER_VOCAB,
   SERVING_VOCAB,
-  type HealthStyle,
-  type PriceTier,
+  type FoodPlace,
+  type FoodTags,
 } from "@/lib/foods/types";
-import type { FoodPlace } from "@/lib/foods/types";
 
 interface FoodFormDialogProps {
   existing: FoodPlace[];
@@ -47,109 +47,261 @@ function formatArea(area: string): string {
   return area.charAt(0).toUpperCase() + area.slice(1);
 }
 
-function toggleCapped(values: string[], value: string, cap: number): string[] {
-  if (values.includes(value)) return values.filter((item) => item !== value);
-  if (values.length >= cap) return values;
-  return [...values, value];
+const SUGGESTION_GROUPS = [
+  { facet: "Menu", prefix: "menu", values: MENU_VOCAB },
+  { facet: "Price", prefix: "price", values: PRICE_TIER_VOCAB },
+  { facet: "Serving", prefix: "serving", values: SERVING_VOCAB },
+  { facet: "Ingredient", prefix: "ingredient", values: INGREDIENT_VOCAB },
+  { facet: "Origin", prefix: "origin", values: ORIGIN_VOCAB },
+  { facet: "Style", prefix: "style", values: HEALTH_STYLE_VOCAB },
+] as const;
+
+const DISH_SUGGESTIONS = [
+  { facet: "Menu", label: "Soto (menu)", token: "soto" },
+  { facet: "Menu", label: "Bakso (menu)", token: "bakso" },
+  { facet: "Menu", label: "Rawon (menu)", token: "rawon" },
+];
+
+interface TagSuggestion {
+  facet: string;
+  label: string;
+  token: string;
 }
 
-interface MultiFacetProps {
-  cap: number;
-  error?: string;
-  idPrefix: string;
-  onToggle: (value: string) => void;
-  title: string;
-  values: readonly string[];
-  selected: string[];
+function buildTagSuggestions(): TagSuggestion[] {
+  const counts = new Map<string, number>();
+  for (const group of SUGGESTION_GROUPS) {
+    for (const value of group.values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  const out: TagSuggestion[] = [...DISH_SUGGESTIONS];
+  for (const group of SUGGESTION_GROUPS) {
+    for (const value of group.values) {
+      out.push({
+        facet: group.facet,
+        label: `${formatFacetValue(value)} (${group.facet})`,
+        token: (counts.get(value) ?? 0) > 1 ? `${group.prefix}:${value}` : value,
+      });
+    }
+  }
+  return out;
 }
 
-function MultiFacet({ cap, error, idPrefix, onToggle, selected, title, values }: MultiFacetProps) {
+const TAG_SUGGESTIONS = buildTagSuggestions();
+const MAX_VISIBLE_SUGGESTIONS = 8;
+
+function chipLabel(token: string): string {
+  return TAG_SUGGESTIONS.find((suggestion) => suggestion.token === token)?.label ?? token;
+}
+
+interface PickerRow {
+  custom: boolean;
+  label: string;
+  token: string;
+}
+
+interface TagsPickerProps {
+  invalid?: boolean;
+  onTokensChange: (tokens: string[]) => void;
+  tokens: string[];
+}
+
+function TagsPicker({ invalid, onTokensChange, tokens }: TagsPickerProps) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const query = search.trim().toLowerCase();
+  const matches = useMemo(
+    () =>
+      TAG_SUGGESTIONS.filter(
+        (suggestion) =>
+          !tokens.includes(suggestion.token) &&
+          (suggestion.token.includes(query) || suggestion.label.toLowerCase().includes(query)),
+      ).slice(0, MAX_VISIBLE_SUGGESTIONS),
+    [query, tokens],
+  );
+  const canAddCustom =
+    query !== "" &&
+    !tokens.some((token) => token.toLowerCase() === query) &&
+    !TAG_SUGGESTIONS.some((suggestion) => suggestion.token === query);
+  const rows: PickerRow[] = [
+    ...matches.map((match) => ({ custom: false, label: match.label, token: match.token })),
+    ...(canAddCustom ? [{ custom: true, label: query, token: query }] : []),
+  ];
+  const activeIndex = Math.min(active, rows.length - 1);
+  const activeRow = rows[activeIndex];
+
+  function pushToken(token: string): void {
+    const value = token.trim().toLowerCase();
+    if (value === "") return;
+    onTokensChange(
+      tokens.some((existing) => existing.toLowerCase() === value) ? tokens : [...tokens, value],
+    );
+  }
+
+  function commitRow(row: PickerRow): void {
+    pushToken(row.token);
+    setSearch("");
+    setActive(0);
+    setOpen(true);
+    inputRef.current?.focus();
+  }
+
+  function removeToken(token: string): void {
+    onTokensChange(tokens.filter((existing) => existing !== token));
+    inputRef.current?.focus();
+  }
+
+  function handleChange(value: string): void {
+    if (value.includes(",")) {
+      const parts = value.split(",");
+      const rest = parts.pop() ?? "";
+      for (const part of parts) pushToken(part);
+      setSearch(rest.replace(/^\s+/, ""));
+    } else {
+      setSearch(value);
+    }
+    setActive(0);
+    setOpen(true);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setOpen(true);
+      setActive((index) => Math.min(index + 1, rows.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive((index) => Math.max(index - 1, 0));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (activeRow) commitRow(activeRow);
+    } else if (event.key === "Escape") {
+      setOpen(false);
+    }
+  }
+
   return (
-    <fieldset className="grid gap-2.5" aria-invalid={error ? true : undefined}>
-      <legend className="text-sm font-medium">
-        {title} ({selected.length}/{cap})
-      </legend>
-      <div className="flex flex-wrap gap-2.5">
-        {values.map((value) => (
-          <Label key={value} htmlFor={`${idPrefix}-${value}`}>
-            <input
-              checked={selected.includes(value)}
-              className="cursor-pointer"
-              id={`${idPrefix}-${value}`}
-              onChange={() => onToggle(value)}
-              type="checkbox"
-              value={value}
-            />
-            {formatFacetValue(value)}
-          </Label>
-        ))}
-      </div>
-      {error && (
-        <p className="text-sm text-destructive" role="alert">
-          {error}
-        </p>
+    <div
+      className="grid gap-2.5"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+    >
+      {tokens.length > 0 && (
+        <div className="flex flex-wrap gap-2.5">
+          {tokens.map((token) => (
+            <Badge key={token} variant="secondary">
+              {chipLabel(token)}
+              <button
+                aria-label={`Remove ${chipLabel(token)}`}
+                className="cursor-pointer"
+                onClick={() => removeToken(token)}
+                type="button"
+              >
+                <XIcon />
+              </button>
+            </Badge>
+          ))}
+        </div>
       )}
-    </fieldset>
+      <div className="relative">
+        <Input
+          aria-activedescendant={activeRow ? `food-form-tags-option-${activeIndex}` : undefined}
+          aria-controls="food-form-tags-listbox"
+          aria-expanded={open && rows.length > 0}
+          aria-invalid={invalid ? true : undefined}
+          id="food-form-tags"
+          onChange={(event) => handleChange(event.target.value)}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder="Search tags or type your own…"
+          ref={inputRef}
+          role="combobox"
+          value={search}
+        />
+        {open && rows.length > 0 && (
+          <ul
+            aria-label="Tag suggestions"
+            className="bg-popover absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border p-1 shadow-md"
+            id="food-form-tags-listbox"
+            role="listbox"
+          >
+            {rows.map((row, index) => (
+              <li
+                aria-selected={index === activeIndex}
+                id={`food-form-tags-option-${index}`}
+                key={row.custom ? `custom-${row.token}` : row.token}
+                role="option"
+              >
+                <button
+                  className={cn(
+                    "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none",
+                    index === activeIndex && "bg-accent text-accent-foreground",
+                  )}
+                  onClick={() => commitRow(row)}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setActive(index)}
+                  type="button"
+                >
+                  {row.custom ? (
+                    <>
+                      Add &ldquo;{row.label}&rdquo;
+                      <span className="text-muted-foreground text-xs">(review queue)</span>
+                    </>
+                  ) : (
+                    row.label
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }
 
-interface SingleFacetProps {
-  error?: string;
-  hint?: string;
-  idPrefix: string;
-  onChange: (value: string) => void;
-  title: string;
-  values: readonly string[];
-  selected: string;
-}
-
-function SingleFacet({
-  error,
-  hint,
-  idPrefix,
-  onChange,
-  selected,
-  title,
-  values,
-}: SingleFacetProps) {
+function TagsPreview({ tags }: { tags: FoodTags }) {
+  const groups: { key: string; label: string; values: string[] }[] = [
+    { key: "menus", label: "Menu", values: tags.menus },
+    ...(tags.priceTier ? [{ key: "priceTier", label: "Price", values: [tags.priceTier] }] : []),
+    { key: "servings", label: "Serving", values: tags.servings },
+    { key: "ingredients", label: "Ingredients", values: tags.ingredients },
+    { key: "origins", label: "Origin", values: tags.origins },
+    ...(tags.healthStyle
+      ? [{ key: "healthStyle", label: "Style", values: [tags.healthStyle] }]
+      : []),
+  ].filter((group) => group.values.length > 0);
+  if (groups.length === 0 && tags.pending.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">No tags yet — search above or type your own.</p>
+    );
+  }
   return (
-    <fieldset className="grid gap-2.5" aria-invalid={error ? true : undefined}>
-      <legend className="text-sm font-medium">{title}</legend>
-      <div className="flex flex-wrap gap-2.5">
-        <Label htmlFor={`${idPrefix}-unset`}>
-          <input
-            checked={selected === ""}
-            className="cursor-pointer"
-            id={`${idPrefix}-unset`}
-            name={idPrefix}
-            onChange={() => onChange("")}
-            type="radio"
-            value=""
-          />
-          Not set
-        </Label>
-        {values.map((value) => (
-          <Label key={value} htmlFor={`${idPrefix}-${value}`}>
-            <input
-              checked={selected === value}
-              className="cursor-pointer"
-              id={`${idPrefix}-${value}`}
-              name={idPrefix}
-              onChange={() => onChange(value)}
-              type="radio"
-              value={value}
-            />
-            {formatFacetValue(value)}
-          </Label>
-        ))}
-      </div>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      {error && (
-        <p className="text-sm text-destructive" role="alert">
-          {error}
-        </p>
+    <div className="grid gap-2.5" aria-live="polite">
+      {groups.map((group) => (
+        <div key={group.key} className="flex flex-wrap items-center gap-2.5">
+          <span className="text-xs text-muted-foreground">{group.label}:</span>
+          {group.values.map((value) => (
+            <Badge key={`${group.key}-${value}`} variant="secondary">
+              {formatFacetValue(value)}
+            </Badge>
+          ))}
+        </div>
+      ))}
+      {tags.pending.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="text-xs text-muted-foreground">Pending:</span>
+          {tags.pending.map((token) => (
+            <Badge aria-label={`Pending: ${token}`} key={`pending-${token}`} variant="outline">
+              {token}
+            </Badge>
+          ))}
+        </div>
       )}
-    </fieldset>
+    </div>
   );
 }
 
@@ -158,13 +310,10 @@ export function FoodFormDialog({ existing, onClose, onSubmit, open, place }: Foo
   const [areas, setAreas] = useState<string[]>(place?.areas ?? []);
   const [instagramUrl, setInstagramUrl] = useState(place?.instagramUrl ?? "");
   const [tiktokUrl, setTiktokUrl] = useState(place?.tiktokUrl ?? "");
-  const [menus, setMenus] = useState<string[]>(place?.menus ?? []);
-  const [servings, setServings] = useState<string[]>(place?.servings ?? []);
-  const [ingredients, setIngredients] = useState<string[]>(place?.ingredients ?? []);
-  const [origins, setOrigins] = useState<string[]>(place?.origins ?? []);
-  const [priceTier, setPriceTier] = useState<string>(place?.priceTier ?? "");
-  const [healthStyle, setHealthStyle] = useState<string>(place?.healthStyle ?? "");
+  const [tokens, setTokens] = useState<string[]>(() => (place ? foodTagsToTokens(place.tags) : []));
   const [errors, setErrors] = useState<FoodInputErrors>({});
+
+  const preview = useMemo(() => mapFreeTextToTags(tokens).tags, [tokens]);
 
   function toggleArea(area: string): void {
     setAreas((prev) =>
@@ -176,31 +325,14 @@ export function FoodFormDialog({ existing, onClose, onSubmit, open, place }: Foo
     event.preventDefault();
     const input: FoodInput = {
       areas,
-      ...(healthStyle ? { healthStyle: healthStyle as HealthStyle } : {}),
-      ingredients,
       instagramUrl,
-      menus,
       name,
-      origins,
-      ...(priceTier ? { priceTier: priceTier as PriceTier } : {}),
-      servings,
+      tags: mapFreeTextToTags(tokens).tags,
       tiktokUrl,
     };
     const next = validateFoodInput(input, existing, place?.id);
     setErrors(next);
-    if (
-      next.areas ??
-      next.facets ??
-      next.healthStyle ??
-      next.ingredients ??
-      next.instagramUrl ??
-      next.menus ??
-      next.name ??
-      next.origins ??
-      next.priceTier ??
-      next.servings ??
-      next.tiktokUrl
-    )
+    if (next.areas ?? next.facets ?? next.instagramUrl ?? next.name ?? next.tags ?? next.tiktokUrl)
       return;
     onSubmit(input);
   }
@@ -259,73 +391,28 @@ export function FoodFormDialog({ existing, onClose, onSubmit, open, place }: Foo
             )}
           </fieldset>
 
-          <MultiFacet
-            cap={MAX_MENUS_PER_PLACE}
-            error={errors.menus}
-            idPrefix="food-form-menu"
-            onToggle={(value) => setMenus((prev) => toggleCapped(prev, value, MAX_MENUS_PER_PLACE))}
-            selected={menus}
-            title="Menu"
-            values={MENU_VOCAB}
-          />
-          <SingleFacet
-            error={errors.priceTier}
-            hint="Budget ~<20k · regular ~20-50k · premium ~50-100k · splurge ~>100k (guidance only)"
-            idPrefix="food-form-price"
-            onChange={setPriceTier}
-            selected={priceTier}
-            title="Price"
-            values={PRICE_TIER_VOCAB}
-          />
-          <MultiFacet
-            cap={MAX_SERVINGS_PER_PLACE}
-            error={errors.servings}
-            idPrefix="food-form-serving"
-            onToggle={(value) =>
-              setServings((prev) => toggleCapped(prev, value, MAX_SERVINGS_PER_PLACE))
-            }
-            selected={servings}
-            title="Serving"
-            values={SERVING_VOCAB}
-          />
-          <MultiFacet
-            cap={MAX_INGREDIENTS_PER_PLACE}
-            error={errors.ingredients}
-            idPrefix="food-form-ingredient"
-            onToggle={(value) =>
-              setIngredients((prev) => toggleCapped(prev, value, MAX_INGREDIENTS_PER_PLACE))
-            }
-            selected={ingredients}
-            title="Ingredients"
-            values={INGREDIENT_VOCAB}
-          />
-          <MultiFacet
-            cap={MAX_ORIGINS_PER_PLACE}
-            error={errors.origins}
-            idPrefix="food-form-origin"
-            onToggle={(value) =>
-              setOrigins((prev) => toggleCapped(prev, value, MAX_ORIGINS_PER_PLACE))
-            }
-            selected={origins}
-            title="Origin"
-            values={ORIGIN_VOCAB}
-          />
-          <SingleFacet
-            error={errors.healthStyle}
-            idPrefix="food-form-style"
-            onChange={setHealthStyle}
-            selected={healthStyle}
-            title="Style"
-            values={HEALTH_STYLE_VOCAB}
-          />
-          {errors.facets && (
-            <p className="text-sm text-destructive" role="alert">
-              {errors.facets}
+          <div className="grid gap-2.5">
+            <Label htmlFor="food-form-tags">Tags</Label>
+            <TagsPicker
+              invalid={(errors.tags ?? errors.facets) ? true : undefined}
+              onTokensChange={setTokens}
+              tokens={tokens}
+            />
+            <TagsPreview tags={preview} />
+            {errors.tags && (
+              <p className="text-sm text-destructive" role="alert">
+                {errors.tags}
+              </p>
+            )}
+            {errors.facets && (
+              <p className="text-sm text-destructive" role="alert">
+                {errors.facets}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Unknown tags go to a review queue — they stay searchable.
             </p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            Adding price + serving helps others find this place.
-          </p>
+          </div>
 
           <div className="grid gap-2.5">
             <Label htmlFor="food-form-instagram">Instagram (optional)</Label>

@@ -50,53 +50,59 @@ function formatArea(area: string): string {
 }
 
 function FoodBadges({ place }: { place: FoodPlace }) {
+  const tags = place.tags;
   const badges: { ariaLabel: string; dot: string; key: string; text: string }[] = [
-    ...place.menus.map((value) => ({
+    ...tags.menus.map((value) => ({
       ariaLabel: `Menu: ${formatFacetValue(value)}`,
       dot: "bg-rose-500",
       key: `menu-${value}`,
       text: formatFacetValue(value),
     })),
-    ...(place.priceTier
+    ...(tags.priceTier
       ? [
           {
-            ariaLabel: `Price: ${formatFacetValue(place.priceTier)}`,
+            ariaLabel: `Price: ${formatFacetValue(tags.priceTier)}`,
             dot: "bg-emerald-500",
             key: "price",
-            text: formatFacetValue(place.priceTier),
+            text: formatFacetValue(tags.priceTier),
           },
         ]
       : []),
-    ...place.servings.map((value) => ({
+    ...tags.servings.map((value) => ({
       ariaLabel: `Serving: ${formatFacetValue(value)}`,
       dot: "bg-violet-500",
       key: `serving-${value}`,
       text: formatFacetValue(value),
     })),
-    ...place.ingredients.map((value) => ({
+    ...tags.ingredients.map((value) => ({
       ariaLabel: `Ingredient: ${formatFacetValue(value)}`,
       dot: "bg-amber-500",
       key: `ingredient-${value}`,
       text: formatFacetValue(value),
     })),
-    ...place.origins.map((value) => ({
+    ...tags.origins.map((value) => ({
       ariaLabel: `Origin: ${formatFacetValue(value)}`,
       dot: "bg-sky-500",
       key: `origin-${value}`,
       text: formatFacetValue(value),
     })),
-    ...(place.healthStyle
+    ...(tags.healthStyle
       ? [
           {
-            ariaLabel: `Style: ${formatFacetValue(place.healthStyle)}`,
+            ariaLabel: `Style: ${formatFacetValue(tags.healthStyle)}`,
             dot: "bg-lime-500",
             key: "health",
-            text: formatFacetValue(place.healthStyle),
+            text: formatFacetValue(tags.healthStyle),
           },
         ]
       : []),
   ];
-  if (badges.length === 0) return null;
+  const pending = tags.pending.map((token) => ({
+    ariaLabel: `Pending: ${token}`,
+    key: `pending-${token}`,
+    text: token,
+  }));
+  if (badges.length === 0 && pending.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-2.5">
       {badges.map((badge) => (
@@ -105,38 +111,11 @@ function FoodBadges({ place }: { place: FoodPlace }) {
           {badge.text}
         </Badge>
       ))}
-    </div>
-  );
-}
-
-interface FacetSectionProps {
-  onToggle: (value: string) => void;
-  selected: string[];
-  title: string;
-  values: string[];
-}
-
-function FacetSection({ onToggle, selected, title, values }: FacetSectionProps) {
-  if (values.length === 0) return null;
-  return (
-    <div className="grid gap-2.5">
-      <p className="text-sm font-medium">{title}</p>
-      <div className="flex flex-wrap gap-2.5">
-        {values.map((value) => {
-          const active = selected.includes(value);
-          return (
-            <Button
-              aria-pressed={active}
-              key={value}
-              onClick={() => onToggle(value)}
-              size="sm"
-              variant={active ? "default" : "outline"}
-            >
-              {formatFacetValue(value)}
-            </Button>
-          );
-        })}
-      </div>
+      {pending.map((badge) => (
+        <Badge aria-label={badge.ariaLabel} key={badge.key} variant="outline">
+          {badge.text}
+        </Badge>
+      ))}
     </div>
   );
 }
@@ -170,6 +149,28 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
 
   const catalog = useMemo(() => deriveFacetCatalog(foods), [foods]);
   const catalogAreas = useMemo(() => deriveAreaCatalog(foods), [foods]);
+  // One flat Tags list for discovery. Group order pins colliding values to the
+  // same facet as contribution mapping (porridge→menus, mixed→ingredients).
+  const allTags = useMemo(() => {
+    const seen = new Set<string>();
+    const tags: { facet: FacetKey; value: string }[] = [];
+    const groups: { facet: FacetKey; values: string[] }[] = [
+      { facet: "menus", values: catalog.menus },
+      { facet: "priceTiers", values: catalog.priceTiers },
+      { facet: "servings", values: catalog.servings },
+      { facet: "ingredients", values: catalog.ingredients },
+      { facet: "origins", values: catalog.origins },
+      { facet: "healthStyles", values: catalog.healthStyles },
+    ];
+    for (const group of groups) {
+      for (const value of group.values) {
+        if (seen.has(value)) continue;
+        seen.add(value);
+        tags.push({ facet: group.facet, value });
+      }
+    }
+    return tags.sort((a, b) => formatFacetValue(a.value).localeCompare(formatFacetValue(b.value)));
+  }, [catalog]);
 
   const selectedByFacet: Record<FacetKey, string[]> = {
     healthStyles: selectedHealthStyles,
@@ -321,48 +322,27 @@ export function FoodsCatalogClient({ bypass = false, initialFoods }: FoodsCatalo
           />
         </div>
 
-        <FacetSection
-          onToggle={(value) => toggleIn(setters.menus, value)}
-          selected={visibleByFacet.menus}
-          title="Menu"
-          values={catalog.menus}
-        />
-        <FacetSection
-          onToggle={(value) => toggleIn(setters.priceTiers, value)}
-          selected={visibleByFacet.priceTiers}
-          title="Price"
-          values={catalog.priceTiers}
-        />
-        <FacetSection
-          onToggle={(value) => toggleIn(setters.servings, value)}
-          selected={visibleByFacet.servings}
-          title="Serving"
-          values={catalog.servings}
-        />
-
-        <details className="grid gap-2.5">
-          <summary className="cursor-pointer text-sm font-medium">More filters</summary>
-          <div className="grid gap-5 pt-2.5">
-            <FacetSection
-              onToggle={(value) => toggleIn(setters.ingredients, value)}
-              selected={visibleByFacet.ingredients}
-              title="Ingredients"
-              values={catalog.ingredients}
-            />
-            <FacetSection
-              onToggle={(value) => toggleIn(setters.origins, value)}
-              selected={visibleByFacet.origins}
-              title="Origin"
-              values={catalog.origins}
-            />
-            <FacetSection
-              onToggle={(value) => toggleIn(setters.healthStyles, value)}
-              selected={visibleByFacet.healthStyles}
-              title="Style"
-              values={catalog.healthStyles}
-            />
+        {allTags.length > 0 && (
+          <div className="grid gap-2.5">
+            <p className="text-sm font-medium">Tags</p>
+            <div className="flex flex-wrap gap-2.5">
+              {allTags.map(({ facet, value }) => {
+                const active = visibleByFacet[facet].includes(value);
+                return (
+                  <Button
+                    aria-pressed={active}
+                    key={value}
+                    onClick={() => toggleIn(setters[facet], value)}
+                    size="sm"
+                    variant={active ? "default" : "outline"}
+                  >
+                    {formatFacetValue(value)}
+                  </Button>
+                );
+              })}
+            </div>
           </div>
-        </details>
+        )}
 
         <div className="grid gap-2.5">
           <p className="text-sm font-medium">Area</p>

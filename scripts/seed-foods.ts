@@ -11,17 +11,22 @@ import {
   SERVING_VOCAB,
 } from "../lib/foods/types";
 
-interface SeedRow {
-  areas: string[];
+interface SeedTags {
   healthStyle?: string;
-  id: string;
   ingredients?: string[];
-  instagramUrl?: string;
   menus?: string[];
-  name: string;
   origins?: string[];
+  pending?: string[];
   priceTier?: string;
   servings?: string[];
+}
+
+interface SeedRow {
+  areas: string[];
+  id: string;
+  instagramUrl?: string;
+  name: string;
+  tags: SeedTags;
   tiktokUrl?: string;
 }
 
@@ -67,6 +72,17 @@ function checkSingle(
   return value;
 }
 
+function checkPending(rowName: string, values: string[] | undefined): string[] {
+  const list = values ?? [];
+  if (list.length > 8) fail(`too many pending tags in seed data: ${rowName}`);
+  for (const value of list) {
+    if (value.length < 1 || value.length > 24) {
+      fail(`bad pending tag in seed data: ${rowName} → ${value}`);
+    }
+  }
+  return list;
+}
+
 async function main(): Promise<void> {
   const useEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
   if (!useEmulator) {
@@ -88,12 +104,27 @@ async function main(): Promise<void> {
     for (const area of row.areas) {
       if (!ALLOWED_AREAS.has(area)) fail(`bad area in seed data: ${row.name} → ${area}`);
     }
-    const menus = checkMulti(row.name, "menus", row.menus, MENU_VOCAB, 3);
-    const servings = checkMulti(row.name, "servings", row.servings, SERVING_VOCAB, 2);
-    const ingredients = checkMulti(row.name, "ingredients", row.ingredients, INGREDIENT_VOCAB, 5);
-    const origins = checkMulti(row.name, "origins", row.origins, ORIGIN_VOCAB, 3);
-    const priceTier = checkSingle(row.name, "priceTier", row.priceTier, PRICE_TIER_VOCAB);
-    const healthStyle = checkSingle(row.name, "healthStyle", row.healthStyle, HEALTH_STYLE_VOCAB);
+    if (typeof row.tags !== "object" || row.tags === null) {
+      fail(`missing tags map in seed data: ${row.name}`);
+    }
+    const menus = checkMulti(row.name, "tags.menus", row.tags.menus, MENU_VOCAB, 3);
+    const servings = checkMulti(row.name, "tags.servings", row.tags.servings, SERVING_VOCAB, 2);
+    const ingredients = checkMulti(
+      row.name,
+      "tags.ingredients",
+      row.tags.ingredients,
+      INGREDIENT_VOCAB,
+      5,
+    );
+    const origins = checkMulti(row.name, "tags.origins", row.tags.origins, ORIGIN_VOCAB, 3);
+    const priceTier = checkSingle(row.name, "tags.priceTier", row.tags.priceTier, PRICE_TIER_VOCAB);
+    const healthStyle = checkSingle(
+      row.name,
+      "tags.healthStyle",
+      row.tags.healthStyle,
+      HEALTH_STYLE_VOCAB,
+    );
+    checkPending(row.name, row.tags.pending);
     const total =
       menus.length +
       servings.length +
@@ -150,16 +181,19 @@ async function main(): Promise<void> {
       .doc(row.id)
       .set({
         areas: row.areas,
-        ...(row.healthStyle ? { healthStyle: row.healthStyle } : {}),
-        ingredients: row.ingredients ?? [],
-        ...(row.instagramUrl ? { instagramUrl: row.instagramUrl } : {}),
         createdAt: new Date(),
         createdByUid: "seed",
-        menus: row.menus ?? [],
+        ...(row.instagramUrl ? { instagramUrl: row.instagramUrl } : {}),
         name: row.name,
-        origins: row.origins ?? [],
-        ...(row.priceTier ? { priceTier: row.priceTier } : {}),
-        servings: row.servings ?? [],
+        tags: {
+          ...(row.tags.healthStyle ? { healthStyle: row.tags.healthStyle } : {}),
+          ingredients: row.tags.ingredients ?? [],
+          menus: row.tags.menus ?? [],
+          origins: row.tags.origins ?? [],
+          pending: row.tags.pending ?? [],
+          ...(row.tags.priceTier ? { priceTier: row.tags.priceTier } : {}),
+          servings: row.tags.servings ?? [],
+        },
         ...(row.tiktokUrl ? { tiktokUrl: row.tiktokUrl } : {}),
         updatedAt: new Date(),
       });

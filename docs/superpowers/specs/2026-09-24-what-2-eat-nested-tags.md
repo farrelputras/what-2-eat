@@ -1,7 +1,7 @@
 # What-2-Eat — Nested Tags Map + Single Tags Input (PRD)
 
 - Date: 2026-09-24
-- Status: draft. No implementation.
+- Status: implemented, UNVERIFIED. Unit probes, seed validation, typecheck, and SSR render pass. Pending: emulator restart (loads new rules) + interactive add-place/filter smoke in a real browser.
 - Language: English.
 - Supplements: `2026-09-23-what-2-eat-tag-facets.md` (v1 flat facets, implemented). This doc proposes v2 and supersedes v1 §6 (data model) and §8.2 (form) if accepted; taxonomy, vocabs, caps, and filter semantics from v1 carry over unless stated here.
 - Locked decisions (from planning session 2026-09-24): all 6 facets move inside one `tags` map / Add-place form collapses 6 facet sections into a single tags input / unknown free text is accepted into a `tags.pending` review queue (not rejected) / emulator-only, hard cutover, no prod migration script, no dual-write.
@@ -99,8 +99,8 @@ interface FoodPlace {
 
 ## 8. UX changes
 
-1. **Form (`food-form-client.tsx`):** delete the 6 `MultiFacet`/`SingleFacet` sections. One tags combobox: free-text entry (comma/Enter split) + suggestions from all vocabs rendered as `<value> (<facet>)`, colliding values shown twice with facet hints. Live preview below the input: resolved facet chips grouped by facet + pending chips muted. Submit builds `FoodInput { areas, name, urls, tags }` via `mapFreeTextToTags`. Keep name/area/URL behavior and the passive hint, retargeted ("Unknown tags go to a review queue — they stay searchable.").
-2. **Catalog (`foods-catalog-client.tsx`):** filter groups stay 6 (Menu, Price, Serving + More filters) — contribution is simplified, discovery is not. Accessors switch to `place.tags.*`. `FoodBadges` gains the `pending` row.
+1. **Form (`food-form-client.tsx`):** delete the 6 `MultiFacet`/`SingleFacet` sections and the always-visible suggestions wall. One searchable tags dropdown: typing filters vocab suggestions rendered as `<value> (<facet>)` (colliding values prefixed, e.g. `ingredient:porridge`); Enter/click adds a chip, comma also commits; unmatched text is offered as `Add "<text>"` so free text still reaches `pending`; chips are removable. Live preview below the input: resolved facet chips grouped by facet + pending chips muted. Submit builds `FoodInput { areas, name, urls, tags }` via `mapFreeTextToTags(tokens)`. Keep name/area/URL behavior and the passive hint, retargeted ("Unknown tags go to a review queue — they stay searchable.").
+2. **Catalog (`foods-catalog-client.tsx`):** one flat `Tags` filter group (all facet values present, deduped, alpha-sorted; colliding values pinned to the same facet as contribution mapping: `porridge→menus`, `mixed→ingredients`). Underlying per-facet filter semantics unchanged. Accessors switch to `place.tags.*`. `FoodBadges` gains the `pending` row.
 3. **Copy stays inline and server-first**; no `t()` runtime.
 
 ## 9. Validation, rules, seed, cutover
