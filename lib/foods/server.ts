@@ -1,8 +1,18 @@
 import foods from "./data/foods.json";
-import { deriveAreaCatalog, deriveFacetCatalog, type FacetCatalog } from "./index";
+import {
+  deriveAreaCatalog,
+  deriveFacetCatalog,
+  normalizeFoodTags,
+  type FacetCatalog,
+} from "./index";
 import type { FoodPlace } from "./types";
 
-const ALL_FOODS = foods as FoodPlace[];
+const ALL_FOODS: FoodPlace[] = (
+  foods as { areas: string[]; id: string; name: string; tags: unknown }[]
+).map((row) => ({
+  ...row,
+  tags: normalizeFoodTags(row.tags),
+}));
 
 export function getAllFoods(): FoodPlace[] {
   return ALL_FOODS;

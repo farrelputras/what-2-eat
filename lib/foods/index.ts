@@ -56,6 +56,8 @@ export const MAX_ORIGINS_PER_PLACE = 3;
 export const MAX_FACET_VALUES_PER_PLACE = 8;
 export const MAX_PENDING_PER_PLACE = 8;
 export const MAX_PENDING_TAG_LENGTH = 24;
+export const MAX_OPEN_VALUES_PER_FACET = 5;
+export const MAX_OPEN_FACETS_PER_PLACE = 8;
 
 export const MAX_FOOD_URL_LENGTH = 300;
 
@@ -66,10 +68,39 @@ export const FOOD_AREAS = ["batam", "malang", "surabaya"] as const;
 // mapFreeTextToTags; this schema only guards shape and bounds.
 const facetValueSchema = z.string().min(1).max(MAX_PENDING_TAG_LENGTH);
 
+const FACET_KEY_PATTERN = /^[a-z][A-Za-z0-9]{0,23}$/;
+const OPEN_VALUE_PATTERN = /^[a-z0-9][a-z0-9-]{0,23}$/;
+
+const KNOWN_OPEN_RESERVED = new Set([
+  "menus",
+  "servings",
+  "ingredients",
+  "origins",
+  "priceTier",
+  "healthStyle",
+  "pending",
+]);
+
 const foodTagsSchema = z.object({
   healthStyle: facetValueSchema.optional(),
   ingredients: facetValueSchema.array().max(MAX_INGREDIENTS_PER_PLACE),
   menus: facetValueSchema.array().max(MAX_MENUS_PER_PLACE),
+  open: z
+    .record(z.string(), facetValueSchema.array().max(MAX_OPEN_VALUES_PER_FACET))
+    .refine((open) => Object.keys(open).length <= MAX_OPEN_FACETS_PER_PLACE, {
+      message: "Maximum 8 open facets",
+    })
+    .refine(
+      (open) =>
+        Object.entries(open).every(
+          ([facet, values]) =>
+            FACET_KEY_PATTERN.test(facet) &&
+            !KNOWN_OPEN_RESERVED.has(facet) &&
+            values.every((value) => OPEN_VALUE_PATTERN.test(value)),
+        ),
+      { message: "Each tag must be 1-24 characters" },
+    )
+    .default({}),
   origins: facetValueSchema.array().max(MAX_ORIGINS_PER_PLACE),
   pending: facetValueSchema.array().max(MAX_PENDING_PER_PLACE),
   priceTier: facetValueSchema.optional(),
@@ -151,6 +182,29 @@ function normalizePending(values: unknown): string[] {
   return out;
 }
 
+function normalizeOpen(values: unknown): Record<string, string[]> {
+  if (typeof values !== "object" || values === null || Array.isArray(values)) return {};
+  const out: Record<string, string[]> = {};
+  for (const [rawFacet, rawList] of Object.entries(values as Record<string, unknown>)) {
+    if (Object.keys(out).length >= MAX_OPEN_FACETS_PER_PLACE) break;
+    const facet = rawFacet.trim();
+    if (!FACET_KEY_PATTERN.test(facet) || KNOWN_OPEN_RESERVED.has(facet)) continue;
+    if (!Array.isArray(rawList)) continue;
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const raw of rawList) {
+      if (typeof raw !== "string") continue;
+      const value = raw.trim().toLowerCase();
+      if (value === "" || !OPEN_VALUE_PATTERN.test(value) || seen.has(value)) continue;
+      seen.add(value);
+      list.push(value);
+      if (list.length >= MAX_OPEN_VALUES_PER_FACET) break;
+    }
+    if (list.length > 0) out[facet] = list;
+  }
+  return out;
+}
+
 export function normalizeFoodTags(input: unknown): FoodTags {
   const data =
     typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
@@ -160,6 +214,7 @@ export function normalizeFoodTags(input: unknown): FoodTags {
     ...(healthStyle ? { healthStyle } : {}),
     ingredients: normalizeMulti(data["ingredients"], MAX_INGREDIENTS_PER_PLACE),
     menus: normalizeMulti(data["menus"], MAX_MENUS_PER_PLACE),
+    open: normalizeOpen(data["open"]),
     origins: normalizeMulti(data["origins"], MAX_ORIGINS_PER_PLACE),
     pending: normalizePending(data["pending"]),
     ...(priceTier ? { priceTier } : {}),
@@ -175,7 +230,7 @@ export interface TagRegistryOverride {
   valueToFacet?: ReadonlyMap<string, string>;
 }
 
-type KnownTagFacet = keyof Omit<FoodTags, "pending">;
+type KnownTagFacet = keyof Omit<FoodTags, "open" | "pending">;
 
 const KNOWN_TAG_FACETS: KnownTagFacet[] = [
   "menus",
@@ -190,7 +245,7 @@ function isKnownTagFacet(facet: string): facet is KnownTagFacet {
   return (KNOWN_TAG_FACETS as string[]).includes(facet);
 }
 
-const FACET_PREFIXES: Record<string, keyof Omit<FoodTags, "pending">> = {
+const FACET_PREFIXES: Record<string, keyof Omit<FoodTags, "open" | "pending">> = {
   health: "healthStyle",
   healthstyle: "healthStyle",
   ingredient: "ingredients",
@@ -206,7 +261,7 @@ const FACET_PREFIXES: Record<string, keyof Omit<FoodTags, "pending">> = {
   style: "healthStyle",
 };
 
-const VOCAB_BY_FACET: Record<keyof Omit<FoodTags, "pending">, ReadonlySet<string>> = {
+const VOCAB_BY_FACET: Record<keyof Omit<FoodTags, "open" | "pending">, ReadonlySet<string>> = {
   healthStyle: new Set<string>(HEALTH_STYLE_VOCAB),
   ingredients: new Set<string>(INGREDIENT_VOCAB),
   menus: new Set<string>(MENU_VOCAB),
@@ -215,8 +270,8 @@ const VOCAB_BY_FACET: Record<keyof Omit<FoodTags, "pending">, ReadonlySet<string
   servings: new Set<string>(SERVING_VOCAB),
 };
 
-function facetForValue(value: string): keyof Omit<FoodTags, "pending"> | undefined {
-  const facets: (keyof Omit<FoodTags, "pending">)[] = [
+function facetForValue(value: string): keyof Omit<FoodTags, "open" | "pending"> | undefined {
+  const facets: (keyof Omit<FoodTags, "open" | "pending">)[] = [
     "menus",
     "servings",
     "ingredients",
@@ -265,6 +320,22 @@ function registryFacetForValue(
   return facet && isKnownTagFacet(facet) ? facet : undefined;
 }
 
+function registryOpenFacetForValue(
+  token: string,
+  registry?: TagRegistryOverride,
+): string | undefined {
+  const facet = registry?.valueToFacet?.get(token);
+  if (!facet || isKnownTagFacet(facet) || facet === "pending") return undefined;
+  if (!FACET_KEY_PATTERN.test(facet)) return undefined;
+  return facet;
+}
+
+function isOpenFacetValue(facet: string, value: string, registry?: TagRegistryOverride): boolean {
+  if (isKnownTagFacet(facet) || facet === "pending") return false;
+  if (!FACET_KEY_PATTERN.test(facet) || !OPEN_VALUE_PATTERN.test(value)) return false;
+  return registry?.valueToFacet?.get(value) === facet;
+}
+
 export function mapFreeTextToTags(
   tokens: string[],
   registry?: TagRegistryOverride,
@@ -274,11 +345,20 @@ export function mapFreeTextToTags(
   const ingredients: string[] = [];
   const origins: string[] = [];
   const pending: string[] = [];
+  const open: Record<string, string[]> = {};
   let priceTier: string | undefined;
   let healthStyle: string | undefined;
 
   function addMulti(list: string[], value: string): void {
     if (!list.includes(value)) list.push(value);
+  }
+
+  function addOpen(facet: string, value: string): void {
+    const list = open[facet] ?? [];
+    if (list.includes(value)) return;
+    if (list.length >= MAX_OPEN_VALUES_PER_FACET) return;
+    if (Object.keys(open).length >= MAX_OPEN_FACETS_PER_PLACE && !open[facet]) return;
+    open[facet] = [...list, value];
   }
 
   function addPending(token: string): void {
@@ -287,7 +367,7 @@ export function mapFreeTextToTags(
     pending.push(value);
   }
 
-  function assignResolved(facet: keyof Omit<FoodTags, "pending">, value: string): void {
+  function assignResolved(facet: keyof Omit<FoodTags, "open" | "pending">, value: string): void {
     if (facet === "menus") addMulti(menus, value);
     else if (facet === "servings") addMulti(servings, value);
     else if (facet === "ingredients") addMulti(ingredients, value);
@@ -306,12 +386,16 @@ export function mapFreeTextToTags(
       const value = token.slice(colon + 1).trim();
       if (facet && isKnownTagFacet(facet) && isKnownFacetValue(facet, value, registry)) {
         assignResolved(facet, value);
+      } else if (facet && !isKnownTagFacet(facet) && isOpenFacetValue(facet, value, registry)) {
+        addOpen(facet, value);
       } else addPending(token);
       continue;
     }
     const dishParent = registry?.synonymToTag?.get(token);
     if (dishParent) {
       if (isKnownTagFacet(dishParent.facet)) assignResolved(dishParent.facet, dishParent.value);
+      else if (isOpenFacetValue(dishParent.facet, dishParent.value, registry))
+        addOpen(dishParent.facet, dishParent.value);
       else addPending(token);
       continue;
     }
@@ -327,7 +411,11 @@ export function mapFreeTextToTags(
     }
     const facet = facetForValue(token) ?? registryFacetForValue(token, registry);
     if (facet) assignResolved(facet, token);
-    else addPending(token);
+    else {
+      const openFacet = registryOpenFacetForValue(token, registry);
+      if (openFacet) addOpen(openFacet, token);
+      else addPending(token);
+    }
   }
 
   return {
@@ -335,6 +423,7 @@ export function mapFreeTextToTags(
       ...(healthStyle ? { healthStyle } : {}),
       ingredients,
       menus,
+      open,
       origins,
       pending,
       ...(priceTier ? { priceTier } : {}),
@@ -345,6 +434,7 @@ export function mapFreeTextToTags(
 
 // Serialize tags back to tokens for the edit form. Values that would re-map to
 // a different facet bare (ingredients porridge, origins mixed) keep a prefix.
+// Open values use facet:value prefixes only when the bare token is ambiguous.
 export function foodTagsToTokens(tags: FoodTags, registry?: TagRegistryOverride): string[] {
   const tokens: string[] = [];
   const needsPrefix = buildPrefixCheck(registry);
@@ -357,13 +447,19 @@ export function foodTagsToTokens(tags: FoodTags, registry?: TagRegistryOverride)
   for (const value of tags.origins)
     tokens.push(needsPrefix("origins", value) ? `origin:${value}` : value);
   if (tags.healthStyle) tokens.push(tags.healthStyle);
+  for (const [facet, values] of Object.entries(tags.open ?? {}).sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    for (const value of values)
+      tokens.push(needsPrefix(facet, value) ? `${facet}:${value}` : value);
+  }
   for (const value of tags.pending) tokens.push(value);
   return tokens;
 }
 
 function buildPrefixCheck(
   registry?: TagRegistryOverride,
-): (facet: KnownTagFacet, value: string) => boolean {
+): (facet: string, value: string) => boolean {
   if (!registry?.suggestionsByFacet) {
     return (facet, value) =>
       (facet === "ingredients" && value === "porridge") ||
@@ -396,13 +492,15 @@ function buildPrefixCheck(
 }
 
 export function countFacetValues(tags: FoodTags): number {
+  const openTotal = Object.values(tags.open ?? {}).reduce((sum, list) => sum + list.length, 0);
   return (
     tags.menus.length +
     tags.servings.length +
     tags.ingredients.length +
     tags.origins.length +
     (tags.priceTier ? 1 : 0) +
-    (tags.healthStyle ? 1 : 0)
+    (tags.healthStyle ? 1 : 0) +
+    openTotal
   );
 }
 
@@ -459,6 +557,7 @@ export function validateFoodInput(
         else if (sub === "ingredients") errors.tags = "Maximum 5 ingredients";
         else if (sub === "origins") errors.tags = "Maximum 3 origins";
         else if (sub === "pending") errors.tags = "Each tag must be 1-24 characters (max 8)";
+        else if (sub === "open") errors.tags = "Each tag must be 1-24 characters (max 5 per facet)";
       } else if (field === "instagramUrl" && !errors.instagramUrl) {
         errors.instagramUrl = `Link must be at most ${MAX_FOOD_URL_LENGTH} characters`;
       } else if (field === "tiktokUrl" && !errors.tiktokUrl) {
@@ -468,12 +567,17 @@ export function validateFoodInput(
   }
   if (!errors.tags) {
     const raw = input.tags;
+    const open = raw.open ?? {};
+    const openFacets = Object.keys(open).length;
+    const openOver = Object.values(open).some((list) => list.length > MAX_OPEN_VALUES_PER_FACET);
     if (raw.menus.length > MAX_MENUS_PER_PLACE) errors.tags = "Maximum 3 menu forms";
     else if (raw.servings.length > MAX_SERVINGS_PER_PLACE) errors.tags = "Maximum 2 servings";
     else if (raw.ingredients.length > MAX_INGREDIENTS_PER_PLACE)
       errors.tags = "Maximum 5 ingredients";
     else if (raw.origins.length > MAX_ORIGINS_PER_PLACE) errors.tags = "Maximum 3 origins";
     else if (raw.pending.length > MAX_PENDING_PER_PLACE) errors.tags = "Maximum 8 pending tags";
+    else if (openFacets > MAX_OPEN_FACETS_PER_PLACE || openOver)
+      errors.tags = "Each tag must be 1-24 characters (max 5 per facet)";
   }
   if (countFacetValues(tags) > MAX_FACET_VALUES_PER_PLACE && !errors.facets) {
     errors.facets = "Maximum 8 facet values total";
@@ -544,6 +648,7 @@ export interface FacetCatalog {
   healthStyles: string[];
   ingredients: string[];
   menus: string[];
+  open: Record<string, string[]>;
   origins: string[];
   priceTiers: string[];
   servings: string[];
@@ -556,10 +661,23 @@ function sortedUnique(values: (string | undefined)[]): string[] {
 }
 
 export function deriveFacetCatalog(foods: FoodPlace[]): FacetCatalog {
+  const openGroups = new Map<string, Set<string>>();
+  for (const place of foods) {
+    for (const [facet, values] of Object.entries(place.tags.open ?? {})) {
+      const group = openGroups.get(facet) ?? new Set<string>();
+      for (const value of values) group.add(value);
+      openGroups.set(facet, group);
+    }
+  }
+  const open: Record<string, string[]> = {};
+  for (const [facet, values] of [...openGroups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    open[facet] = [...values].sort((a, b) => a.localeCompare(b));
+  }
   return {
     healthStyles: sortedUnique(foods.map((place) => place.tags.healthStyle)),
     ingredients: sortedUnique(foods.flatMap((place) => place.tags.ingredients)),
     menus: sortedUnique(foods.flatMap((place) => place.tags.menus)),
+    open,
     origins: sortedUnique(foods.flatMap((place) => place.tags.origins)),
     priceTiers: sortedUnique(foods.map((place) => place.tags.priceTier)),
     servings: sortedUnique(foods.flatMap((place) => place.tags.servings)),

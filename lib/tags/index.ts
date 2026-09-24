@@ -251,6 +251,9 @@ export function describeTagUsage(places: FoodPlace[]): {
     for (const value of tags.origins) recordUsage(raw, "origins", value, place.name);
     if (tags.priceTier) recordUsage(raw, "priceTier", tags.priceTier, place.name);
     if (tags.healthStyle) recordUsage(raw, "healthStyle", tags.healthStyle, place.name);
+    for (const [facet, values] of Object.entries(tags.open ?? {})) {
+      for (const value of values) recordUsage(raw, facet, value, place.name);
+    }
     for (const token of tags.pending) {
       const entry = pending.get(token) ?? { count: 0, examples: [] };
       entry.count += 1;
@@ -271,8 +274,7 @@ function storedValuesFor(place: FoodPlace, facet: string): string[] {
   if (facet === "origins") return tags.origins;
   if (facet === "priceTier") return tags.priceTier ? [tags.priceTier] : [];
   if (facet === "healthStyle") return tags.healthStyle ? [tags.healthStyle] : [];
-  // Open facets have no first-class storage yet; pending tokens are the bridge.
-  return tags.pending;
+  return tags.open?.[facet] ?? [];
 }
 
 export interface MergePreview {
@@ -305,16 +307,16 @@ export function previewMerge(args: {
   return { affected, alreadyTarget, count: affected.length };
 }
 
-// Open-facet selections match pending tokens until the facet ships first-class
-// storage; OR-within the facet, AND-across facets.
+// Open-facet selections match stored open groups; OR-within the facet,
+// AND-across facets.
 export function placeMatchesOpenFacets(
   place: FoodPlace,
   selectedOpen: Record<string, string[]>,
 ): boolean {
-  for (const values of Object.values(selectedOpen)) {
+  for (const [facet, values] of Object.entries(selectedOpen)) {
     if (values.length === 0) continue;
     const wanted = new Set(values.map((value) => normalizeTagValue(value)));
-    const held = new Set(place.tags.pending.map((token) => normalizeTagValue(token)));
+    const held = new Set((place.tags.open?.[facet] ?? []).map((value) => normalizeTagValue(value)));
     if (![...wanted].some((value) => held.has(value))) return false;
   }
   return true;
@@ -346,6 +348,7 @@ export function removeTagValueFromPlace(
   const holder: FoodTags = {
     ingredients: tags.ingredients,
     menus: tags.menus,
+    open: { ...(tags.open ?? {}) },
     origins: tags.origins,
     pending: tags.pending,
     servings: tags.servings,
@@ -361,7 +364,15 @@ export function removeTagValueFromPlace(
     holder.priceTier = removeSingle(tags.priceTier) as FoodTags["priceTier"];
   else if (facet === "healthStyle")
     holder.healthStyle = removeSingle(tags.healthStyle) as FoodTags["healthStyle"];
-  else holder.pending = removeFromList(tags.pending);
+  else if (facet === "pending") holder.pending = removeFromList(tags.pending);
+  else {
+    const current = tags.open?.[facet] ?? [];
+    if (!current.some((item) => normalizeTagValue(item) === target)) return null;
+    touched = true;
+    const next = current.filter((item) => normalizeTagValue(item) !== target);
+    if (next.length === 0) delete holder.open[facet];
+    else holder.open[facet] = next;
+  }
 
   if (!touched) return null;
   return holder;
@@ -402,6 +413,7 @@ export function replaceTagValueInPlace(
   const holder: FoodTags = {
     ingredients: tags.ingredients,
     menus: tags.menus,
+    open: { ...(tags.open ?? {}) },
     origins: tags.origins,
     pending: tags.pending,
     servings: tags.servings,
@@ -417,7 +429,15 @@ export function replaceTagValueInPlace(
     holder.priceTier = removeSingle(tags.priceTier) as FoodTags["priceTier"];
   else if (sourceFacet === "healthStyle")
     holder.healthStyle = removeSingle(tags.healthStyle) as FoodTags["healthStyle"];
-  else holder.pending = removeFromList(tags.pending);
+  else if (sourceFacet === "pending") holder.pending = removeFromList(tags.pending);
+  else {
+    const current = tags.open?.[sourceFacet] ?? [];
+    if (!current.some((value) => normalizeTagValue(value) === source)) return null;
+    touched = true;
+    const next = current.filter((value) => normalizeTagValue(value) !== source);
+    if (next.length === 0) delete holder.open[sourceFacet];
+    else holder.open[sourceFacet] = next;
+  }
 
   if (!touched) return null;
 
@@ -427,7 +447,46 @@ export function replaceTagValueInPlace(
   else if (targetFacet === "origins") holder.origins = addToList(holder.origins);
   else if (targetFacet === "priceTier") holder.priceTier = target as FoodTags["priceTier"];
   else if (targetFacet === "healthStyle") holder.healthStyle = target as FoodTags["healthStyle"];
-  else holder.pending = addToList(holder.pending);
+  else if (targetFacet === "pending") holder.pending = addToList(holder.pending);
+  else {
+    const current = holder.open[targetFacet] ?? [];
+    if (!current.some((value) => normalizeTagValue(value) === target)) {
+      holder.open[targetFacet] = [...current, target];
+    }
+  }
 
   return holder;
+}
+
+// Promote helper: move a pending token into an open facet group. Returns null
+// when the place does not hold the token or caps would be violated.
+export function movePendingToOpen(tags: FoodTags, facet: string, value: string): FoodTags | null {
+  const token = normalizeTagValue(value);
+  if (token === "" || !isValidTagFacet(facet) || isKnownFacet(facet) || facet === "pending") {
+    return null;
+  }
+  if (!tags.pending.some((item) => normalizeTagValue(item) === token)) return null;
+  const open = { ...(tags.open ?? {}) };
+  const group = open[facet] ?? [];
+  if (!group.some((item) => normalizeTagValue(item) === token)) {
+    if (group.length >= 5) return null;
+    if (!open[facet] && Object.keys(open).length >= 8) return null;
+    const knownTotal =
+      tags.menus.length +
+      tags.servings.length +
+      tags.ingredients.length +
+      tags.origins.length +
+      (tags.priceTier ? 1 : 0) +
+      (tags.healthStyle ? 1 : 0);
+    const openTotal = Object.values(open).reduce((sum, list) => sum + list.length, 0);
+    if (knownTotal + openTotal + 1 > 8) return null;
+  }
+  return {
+    ...tags,
+    open: {
+      ...open,
+      [facet]: group.some((item) => normalizeTagValue(item) === token) ? group : [...group, token],
+    },
+    pending: tags.pending.filter((item) => normalizeTagValue(item) !== token),
+  };
 }

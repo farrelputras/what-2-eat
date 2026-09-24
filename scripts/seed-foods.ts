@@ -15,6 +15,7 @@ interface SeedTags {
   healthStyle?: string;
   ingredients?: string[];
   menus?: string[];
+  open?: Record<string, string[]>;
   origins?: string[];
   pending?: string[];
   priceTier?: string;
@@ -83,6 +84,40 @@ function checkPending(rowName: string, values: string[] | undefined): string[] {
   return list;
 }
 
+const SEED_FACET_PATTERN = /^[a-z][A-Za-z0-9]{0,23}$/;
+const SEED_VALUE_PATTERN = /^[a-z0-9][a-z0-9-]{0,23}$/;
+const SEED_KNOWN_RESERVED = new Set([
+  "menus",
+  "servings",
+  "ingredients",
+  "origins",
+  "priceTier",
+  "healthStyle",
+  "pending",
+]);
+
+function checkOpen(
+  rowName: string,
+  open: Record<string, string[]> | undefined,
+): Record<string, string[]> {
+  if (open === undefined) return {};
+  const facets = Object.keys(open);
+  if (facets.length > 8) fail(`too many open facets in seed data: ${rowName}`);
+  for (const [facet, values] of Object.entries(open)) {
+    if (!SEED_FACET_PATTERN.test(facet) || SEED_KNOWN_RESERVED.has(facet)) {
+      fail(`bad open facet in seed data: ${rowName} → ${facet}`);
+    }
+    if (!Array.isArray(values) || values.length > 5) {
+      fail(`bad open values in seed data: ${rowName} → ${facet}`);
+    }
+    for (const value of values) {
+      if (!SEED_VALUE_PATTERN.test(value))
+        fail(`bad open value in seed data: ${rowName} → ${facet}:${value}`);
+    }
+  }
+  return open;
+}
+
 async function main(): Promise<void> {
   const useEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
   if (!useEmulator) {
@@ -125,13 +160,16 @@ async function main(): Promise<void> {
       HEALTH_STYLE_VOCAB,
     );
     checkPending(row.name, row.tags.pending);
+    const open = checkOpen(row.name, row.tags.open);
+    const openTotal = Object.values(open).reduce((sum, list) => sum + list.length, 0);
     const total =
       menus.length +
       servings.length +
       ingredients.length +
       origins.length +
       (priceTier ? 1 : 0) +
-      (healthStyle ? 1 : 0);
+      (healthStyle ? 1 : 0) +
+      openTotal;
     if (total > 8) fail(`too many facet values in seed data: ${row.name}`);
     for (const url of [row.instagramUrl, row.tiktokUrl]) {
       if (url === undefined) continue;
@@ -189,6 +227,9 @@ async function main(): Promise<void> {
           ...(row.tags.healthStyle ? { healthStyle: row.tags.healthStyle } : {}),
           ingredients: row.tags.ingredients ?? [],
           menus: row.tags.menus ?? [],
+          ...(row.tags.open && Object.keys(row.tags.open).length > 0
+            ? { open: row.tags.open }
+            : {}),
           origins: row.tags.origins ?? [],
           pending: row.tags.pending ?? [],
           ...(row.tags.priceTier ? { priceTier: row.tags.priceTier } : {}),

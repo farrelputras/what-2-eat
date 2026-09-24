@@ -68,6 +68,7 @@ export interface FoodTags {
   healthStyle?: string;
   ingredients: string[];
   menus: string[];
+  open: Record<string, string[]>;
   origins: string[];
   pending: string[];
   priceTier?: string;

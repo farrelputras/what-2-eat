@@ -34,15 +34,24 @@ service cloud.firestore {
         + (("priceTier" in tags) ? 1 : 0)
         + (("healthStyle" in tags) ? 1 : 0);
     }
+    // Rules v2 cannot iterate dynamic map keys, so per-value contents inside
+    // open cannot be validated index-wise like the six known facets. Rules
+    // enforce open is a map with at most 8 keys; per-facet values (pattern,
+    // cap 5) and the resolved total (known + open <= 8) are enforced by the
+    // client Zod schema, normalizeFoodTags, and the migration script.
+    function isValidOpen(tags) {
+      return !("open" in tags) || (tags.open is map && tags.open.keys().size() <= 8);
+    }
     function isValidTags(tags) {
       return tags is map
-        && tags.keys().hasOnly(["menus", "servings", "ingredients", "origins", "priceTier", "healthStyle", "pending"])
+        && tags.keys().hasOnly(["menus", "servings", "ingredients", "origins", "priceTier", "healthStyle", "open", "pending"])
         && (!("menus" in tags) || isValidFacetValues(tags.menus, 3))
         && (!("servings" in tags) || isValidFacetValues(tags.servings, 2))
         && (!("ingredients" in tags) || isValidFacetValues(tags.ingredients, 5))
         && (!("origins" in tags) || isValidFacetValues(tags.origins, 3))
         && (!("priceTier" in tags) || (tags.priceTier is string && tags.priceTier.size() >= 1 && tags.priceTier.size() <= 24))
         && (!("healthStyle" in tags) || (tags.healthStyle is string && tags.healthStyle.size() >= 1 && tags.healthStyle.size() <= 24))
+        && isValidOpen(tags)
         && (!("pending" in tags) || isValidPending(tags.pending))
         && facetTotal(tags) <= 8;
     }

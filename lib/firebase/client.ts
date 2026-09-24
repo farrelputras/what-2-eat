@@ -41,6 +41,7 @@ import {
   normalizeTagDoc,
   parseTagFacet,
   parseTagValue,
+  movePendingToOpen,
   removeTagValueFromPlace,
   replaceTagValueInPlace,
 } from "@/lib/tags";
@@ -191,6 +192,19 @@ export async function signOutUser(): Promise<void> {
   await fetch("/api/auth/session", { method: "DELETE" }).catch(() => {});
 }
 
+function tagsToDoc(tags: ReturnType<typeof normalizeFoodTags>): Record<string, unknown> {
+  return {
+    ...(tags.healthStyle ? { healthStyle: tags.healthStyle } : {}),
+    ingredients: tags.ingredients,
+    menus: tags.menus,
+    ...(Object.keys(tags.open ?? {}).length > 0 ? { open: tags.open } : {}),
+    origins: tags.origins,
+    pending: tags.pending,
+    ...(tags.priceTier ? { priceTier: tags.priceTier } : {}),
+    servings: tags.servings,
+  };
+}
+
 function toOptionalUrl(data: Record<string, unknown>, key: string): string | undefined {
   const value = data[key];
   if (typeof value !== "string") return undefined;
@@ -262,15 +276,7 @@ export async function createPlace(input: FoodInput, uid: string): Promise<FoodPl
     createdByUid: uid,
     ...(instagramUrl ? { instagramUrl } : {}),
     name: place.name,
-    tags: {
-      ...(tags.healthStyle ? { healthStyle: tags.healthStyle } : {}),
-      ingredients: tags.ingredients,
-      menus: tags.menus,
-      origins: tags.origins,
-      pending: tags.pending,
-      ...(tags.priceTier ? { priceTier: tags.priceTier } : {}),
-      servings: tags.servings,
-    },
+    tags: tagsToDoc(tags),
     ...(tiktokUrl ? { tiktokUrl } : {}),
     updatedAt: serverTimestamp(),
   });
@@ -294,15 +300,7 @@ export async function updatePlace(id: string, input: FoodInput): Promise<void> {
     serving: deleteField(),
     servings: deleteField(),
     staples: deleteField(),
-    tags: {
-      ...(tags.healthStyle ? { healthStyle: tags.healthStyle } : {}),
-      ingredients: tags.ingredients,
-      menus: tags.menus,
-      origins: tags.origins,
-      pending: tags.pending,
-      ...(tags.priceTier ? { priceTier: tags.priceTier } : {}),
-      servings: tags.servings,
-    },
+    tags: tagsToDoc(tags),
     tiktokUrl: normalizeFoodUrl(input.tiktokUrl) ?? deleteField(),
     updatedAt: serverTimestamp(),
   });
@@ -403,15 +401,7 @@ export async function stripTagFromPlaces(input: { facet: string; value: string }
     const next = removeTagValueFromPlace(place.tags, input.facet, input.value);
     if (!next) continue;
     batch.update(docSnapshot.ref, {
-      tags: {
-        ...(next.healthStyle ? { healthStyle: next.healthStyle } : {}),
-        ingredients: next.ingredients,
-        menus: next.menus,
-        origins: next.origins,
-        pending: next.pending,
-        ...(next.priceTier ? { priceTier: next.priceTier } : {}),
-        servings: next.servings,
-      },
+      tags: tagsToDoc(next),
       updatedAt: serverTimestamp(),
     });
     count += 1;
@@ -445,19 +435,46 @@ export async function applyTagMergeToPlaces(input: {
     );
     if (!next) continue;
     batch.update(docSnapshot.ref, {
-      tags: {
-        ...(next.healthStyle ? { healthStyle: next.healthStyle } : {}),
-        ingredients: next.ingredients,
-        menus: next.menus,
-        origins: next.origins,
-        pending: next.pending,
-        ...(next.priceTier ? { priceTier: next.priceTier } : {}),
-        servings: next.servings,
-      },
+      tags: tagsToDoc(next),
       updatedAt: serverTimestamp(),
     });
     count += 1;
   }
   if (count > 0) await batch.commit();
   return count;
+}
+
+// Promote relocation: move a pending token into an open facet group on every
+// place that holds it. Source is always pending; per-doc cap refusals are
+// skipped and reported so the manager can surface them.
+export async function promotePendingToOpenPlaces(input: {
+  facet: string;
+  value: string;
+}): Promise<{ refused: number; updated: number }> {
+  const db = getFirebaseDb();
+  if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
+  const snapshot = await getDocs(collection(db, FOOD_PLACES_COLLECTION));
+  const batch = writeBatch(db);
+  let updated = 0;
+  let refused = 0;
+  for (const docSnapshot of snapshot.docs) {
+    const place = toFoodPlace(docSnapshot.id, docSnapshot.data());
+    if (!place) continue;
+    const hasToken = place.tags.pending.some(
+      (token) => token.trim().toLowerCase() === input.value.trim().toLowerCase(),
+    );
+    if (!hasToken) continue;
+    const next = movePendingToOpen(place.tags, input.facet, input.value);
+    if (!next) {
+      refused += 1;
+      continue;
+    }
+    batch.update(docSnapshot.ref, {
+      tags: tagsToDoc(next),
+      updatedAt: serverTimestamp(),
+    });
+    updated += 1;
+  }
+  if (updated > 0) await batch.commit();
+  return { refused, updated };
 }

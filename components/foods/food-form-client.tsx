@@ -293,6 +293,13 @@ function TagsPicker({ invalid, onTokensChange, suggestions, tokens }: TagsPicker
 }
 
 function TagsPreview({ tags }: { tags: FoodTags }) {
+  const openGroups = Object.entries(tags.open ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([facet, values]) => ({
+      key: `open-${facet}`,
+      label: formatFacetValue(facet),
+      values,
+    }));
   const groups: { key: string; label: string; values: string[] }[] = [
     { key: "menus", label: "Menu", values: tags.menus },
     ...(tags.priceTier ? [{ key: "priceTier", label: "Price", values: [tags.priceTier] }] : []),
@@ -302,6 +309,7 @@ function TagsPreview({ tags }: { tags: FoodTags }) {
     ...(tags.healthStyle
       ? [{ key: "healthStyle", label: "Style", values: [tags.healthStyle] }]
       : []),
+    ...openGroups,
   ].filter((group) => group.values.length > 0);
   if (groups.length === 0 && tags.pending.length === 0) {
     return (

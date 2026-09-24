@@ -86,6 +86,16 @@ function buildReel(pool: FoodPlace[], winner: FoodPlace): { names: string[]; win
 
 function FoodBadges({ place }: { place: FoodPlace }) {
   const tags = place.tags;
+  const openBadges = Object.entries(tags.open ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .flatMap(([facet, values]) =>
+      values.map((value) => ({
+        ariaLabel: `${formatFacetValue(facet)}: ${formatFacetValue(value)}`,
+        dot: "bg-cyan-500",
+        key: `open-${facet}-${value}`,
+        text: formatFacetValue(value),
+      })),
+    );
   const badges: { ariaLabel: string; dot: string; key: string; text: string }[] = [
     ...tags.menus.map((value) => ({
       ariaLabel: `Menu: ${formatFacetValue(value)}`,
@@ -131,6 +141,7 @@ function FoodBadges({ place }: { place: FoodPlace }) {
           },
         ]
       : []),
+    ...openBadges,
   ];
   const pending = tags.pending.map((token) => ({
     ariaLabel: `Pending: ${token}`,
@@ -256,10 +267,19 @@ export function FoodsCatalogClient({
         const key = keyByStorage.get(storage);
         for (const value of values) {
           if (seen.has(value)) continue;
+          if (maps.deprecatedIds.has(tagDocId(storage, value))) continue;
           seen.add(value);
           chips.push({ facet: storage, key: key ?? null, value });
         }
       });
+    }
+    for (const [facet, values] of Object.entries(catalog.open)) {
+      for (const value of values) {
+        if (seen.has(value)) continue;
+        if (maps?.deprecatedIds.has(tagDocId(facet, value))) continue;
+        seen.add(value);
+        chips.push({ facet, key: null, value });
+      }
     }
     return chips.sort((a, b) => formatFacetValue(a.value).localeCompare(formatFacetValue(b.value)));
   }, [catalog, maps]);
@@ -283,11 +303,11 @@ export function FoodsCatalogClient({
   const visibleOpen: Record<string, string[]> = useMemo(() => {
     const out: Record<string, string[]> = {};
     for (const [facet, values] of Object.entries(selectedOpen)) {
-      const current = new Set(maps?.suggestionsByFacet.get(facet) ?? []);
+      const current = new Set(catalog.open[facet] ?? []);
       out[facet] = values.filter((value) => current.has(value));
     }
     return out;
-  }, [maps, selectedOpen]);
+  }, [catalog, selectedOpen]);
   const effectiveArea = area === "all" || catalogAreas.includes(area) ? area : "all";
 
   const visibleKey = JSON.stringify({ known: visibleByFacet, open: visibleOpen });

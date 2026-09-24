@@ -20,6 +20,7 @@ import {
   applyTagMergeToPlaces,
   createTagDoc as createTagDocRemote,
   deleteTagDoc as deleteTagDocRemote,
+  promotePendingToOpenPlaces as promotePendingToOpenPlacesRemote,
   setTagDeprecated as setTagDeprecatedRemote,
   stripTagFromPlaces as stripTagFromPlacesRemote,
   subscribeAuthUser,
@@ -101,10 +102,8 @@ function useFacetRows(
       if (tag.facet === facet)
         rows.set(tag.value, { count: 0, doc: tag, examples: [], value: tag.value });
     }
-    const stored = isKnownFacet(facet) ? usage.byFacet.get(facet) : usage.pending;
+    const stored = usage.byFacet.get(facet);
     stored?.forEach((entry, value) => {
-      // Open facets read usage through pending tokens.
-      if (!isKnownFacet(facet) && !rows.has(value)) return;
       const row = rows.get(value) ?? { count: 0, examples: [], value };
       row.count = entry.count;
       row.examples = entry.examples;
@@ -602,8 +601,16 @@ function PendingRow({
     setSaving(true);
     try {
       await createTagDocRemote(parsed, uid);
-      setFacet("");
-      toast.success(`"${token}" promoted to ${parsed.facet}:${parsed.value}.`);
+      if (!isKnownFacet(parsed.facet)) {
+        const { refused, updated } = await promotePendingToOpenPlacesRemote(parsed);
+        setFacet("");
+        toast.success(
+          `"${token}" promoted to ${parsed.facet}:${parsed.value} (${updated} place${updated === 1 ? "" : "s"} updated${refused > 0 ? `, ${refused} refused on caps` : ""}).`,
+        );
+      } else {
+        setFacet("");
+        toast.success(`"${token}" promoted to ${parsed.facet}:${parsed.value}.`);
+      }
     } catch {
       toast.error("Could not promote the tag. Please try again.");
     } finally {
