@@ -624,93 +624,96 @@ export function FoodsCatalogClient({
         )}
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="grid gap-2.5 rounded-lg border border-dashed p-10 text-center justify-items-center">
-          <p className="text-lg font-medium">No matches — remove filters or reset filters</p>
-          <Button onClick={handleReset} variant="outline">
-            Reset filters
-          </Button>
-        </div>
-      ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((place) => {
-            const inPool = !excludedIds.has(place.id);
-            const pulsing = pulseId === place.id;
-            return (
-              <li
-                key={place.id}
-                className={`rounded-lg border bg-card p-5 grid gap-2.5 content-start transition-all ${inPool ? "" : "opacity-60 saturate-50"} ${inPool ? "ring-1 ring-primary/20" : ""}`}
-              >
-                <div className="flex items-start justify-between gap-2.5">
-                  <p className="font-medium">{place.name}</p>
-                  <div className="flex shrink-0 gap-1">
-                    <Button
-                      aria-label={
-                        inPool
-                          ? `Remove ${place.name} from shuffle pool`
-                          : `Add ${place.name} to shuffle pool`
-                      }
-                      aria-pressed={inPool}
-                      onClick={() => toggleExclude(place.id)}
-                      size="icon-sm"
-                      variant={inPool ? "secondary" : "outline"}
-                      className={`transition-transform motion-reduce:transition-none ${pulsing ? "scale-110 motion-reduce:scale-100" : ""} ${inPool ? "ring-1 ring-primary/30" : ""}`}
-                    >
-                      {inPool ? <Check /> : <Plus />}
-                    </Button>
-                    <Button
-                      aria-label={`Edit ${place.name}`}
-                      onClick={(event) => openEdit(event, place)}
-                      size="icon-sm"
-                      variant="ghost"
-                    >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      aria-label={`Delete ${place.name}`}
-                      onClick={() => handleDeleteClick(place)}
-                      size="icon-sm"
-                      variant="ghost"
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                </div>
-                <FoodBadges place={place} />
-                <div className="flex flex-wrap gap-2.5">
-                  {place.areas.map((item) => (
-                    <Badge key={item} variant="outline">
-                      {formatArea(item)}
-                    </Badge>
-                  ))}
-                </div>
-                <FoodSocialLinks
-                  instagramUrl={place.instagramUrl}
-                  placeName={place.name}
-                  tiktokUrl={place.tiktokUrl}
-                />
-                {confirmId === place.id && (
-                  <div className="grid gap-2.5 rounded-md border border-destructive/50 p-2.5">
-                    <p className="text-sm">Delete {place.name}?</p>
-                    <div className="flex gap-2.5">
-                      <Button onClick={() => setConfirmId(null)} size="sm" variant="outline">
-                        Cancel
+      <div className="grid gap-5">
+        {filtered.length > 0 && <h2 className="text-lg font-semibold">Result</h2>}
+        {filtered.length === 0 ? (
+          <div className="grid gap-2.5 rounded-lg border border-dashed p-10 text-center justify-items-center">
+            <p className="text-lg font-medium">No matches — remove filters or reset filters</p>
+            <Button onClick={handleReset} variant="outline">
+              Reset filters
+            </Button>
+          </div>
+        ) : (
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filtered.map((place) => {
+              const inPool = !excludedIds.has(place.id);
+              const pulsing = pulseId === place.id;
+              return (
+                <li
+                  key={place.id}
+                  className={`rounded-lg border bg-card p-5 grid gap-2.5 content-start transition-all ${inPool ? "" : "border-dashed opacity-60 saturate-50"}`}
+                >
+                  <div className="flex items-start justify-between gap-2.5">
+                    <p className="font-medium">{place.name}</p>
+                    <div className="flex shrink-0 gap-1">
+                      <Button
+                        aria-label={
+                          inPool
+                            ? `Remove ${place.name} from shuffle pool`
+                            : `Add ${place.name} to shuffle pool`
+                        }
+                        aria-pressed={inPool}
+                        onClick={() => toggleExclude(place.id)}
+                        size="icon-sm"
+                        variant={inPool ? "secondary" : "outline"}
+                        className={`transition-transform motion-reduce:transition-none ${pulsing ? "scale-110 motion-reduce:scale-100" : ""} ${inPool ? "" : "border-dashed"}`}
+                      >
+                        {inPool ? <Check /> : <Plus />}
                       </Button>
                       <Button
-                        onClick={() => handleDeleteClick(place)}
-                        size="sm"
-                        variant="destructive"
+                        aria-label={`Edit ${place.name}`}
+                        onClick={(event) => openEdit(event, place)}
+                        size="icon-sm"
+                        variant="ghost"
                       >
-                        Yes, delete
+                        <Pencil />
+                      </Button>
+                      <Button
+                        aria-label={`Delete ${place.name}`}
+                        onClick={() => handleDeleteClick(place)}
+                        size="icon-sm"
+                        variant="ghost"
+                      >
+                        <Trash2 />
                       </Button>
                     </div>
                   </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
+                  <FoodBadges place={place} />
+                  <div className="flex flex-wrap gap-2.5">
+                    {place.areas.map((item) => (
+                      <Badge key={item} variant="outline">
+                        {formatArea(item)}
+                      </Badge>
+                    ))}
+                  </div>
+                  <FoodSocialLinks
+                    instagramUrl={place.instagramUrl}
+                    placeName={place.name}
+                    tiktokUrl={place.tiktokUrl}
+                  />
+                  {confirmId === place.id && (
+                    <div className="grid gap-2.5 rounded-md border border-destructive/50 p-2.5">
+                      <p className="text-sm">Delete {place.name}?</p>
+                      <div className="flex gap-2.5">
+                        <Button onClick={() => setConfirmId(null)} size="sm" variant="outline">
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={() => handleDeleteClick(place)}
+                          size="sm"
+                          variant="destructive"
+                        >
+                          Yes, delete
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
 
       {form && (
         <FoodFormDialog
