@@ -308,6 +308,11 @@ function isKnownFacetValue(
   value: string,
   registry?: TagRegistryOverride,
 ): boolean {
+  // Registry-rich envs (prod) are registry-only: built-ins are seed/fallback
+  // data for empty registries (dev). Matches findValueCollision's includeBuiltIns.
+  if ((registry?.valueToFacet?.size ?? 0) > 0) {
+    return registry?.valueToFacet?.get(value) === facet;
+  }
   if (VOCAB_BY_FACET[facet].has(value)) return true;
   return registry?.valueToFacet?.get(value) === facet;
 }
@@ -409,7 +414,12 @@ export function mapFreeTextToTags(
       addMulti(ingredients, token);
       continue;
     }
-    const facet = facetForValue(token) ?? registryFacetForValue(token, registry);
+    // Registry-rich envs (prod) resolve bare tokens registry-only; empty
+    // registries (dev) fall back to built-ins. Matches findValueCollision.
+    const facet =
+      (registry?.valueToFacet?.size ?? 0) > 0
+        ? registryFacetForValue(token, registry)
+        : (facetForValue(token) ?? registryFacetForValue(token, registry));
     if (facet) assignResolved(facet, token);
     else {
       const openFacet = registryOpenFacetForValue(token, registry);

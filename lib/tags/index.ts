@@ -47,18 +47,24 @@ const BUILT_IN_BY_FACET: Record<string, ReadonlySet<string>> = {
 
 // Cross-facet duplicate check: a value may only live in one facet so bare
 // tokens keep resolving deterministically (porridge/mixed stay pinned).
+// The registry is consulted first so a promoted value overrides a stale
+// built-in. Registry-rich envs (prod) are registry-only: built-ins are
+// seed/fallback data for empty registries (dev), skipped via includeBuiltIns.
 export function findValueCollision(
   value: string,
   excludeFacet: string,
   registryValueToFacet?: ReadonlyMap<string, string>,
+  includeBuiltIns = true,
 ): string | null {
   const token = normalizeTagValue(value);
   if (token === "") return null;
-  for (const [facet, vocab] of Object.entries(BUILT_IN_BY_FACET)) {
-    if (facet !== excludeFacet && vocab.has(token)) return facet;
-  }
   const holder = registryValueToFacet?.get(token);
   if (holder && holder !== excludeFacet) return holder;
+  if (includeBuiltIns) {
+    for (const [facet, vocab] of Object.entries(BUILT_IN_BY_FACET)) {
+      if (facet !== excludeFacet && vocab.has(token)) return facet;
+    }
+  }
   return null;
 }
 
@@ -409,6 +415,7 @@ function facetMoveLabel(facet: string): string {
 // same-facet is a rename (not a move), third-facet collisions name the
 // holding facet (the source facet itself is never a collision).
 export function validateMoveTarget(args: {
+  includeBuiltIns?: boolean;
   sourceFacet: string;
   targetFacet: string;
   value: string;
@@ -419,7 +426,12 @@ export function validateMoveTarget(args: {
   if (args.targetFacet === args.sourceFacet)
     return "That is the current facet — rename instead of moving.";
   if (args.targetFacet.trim() === "") return "Pick a facet.";
-  const holder = findValueCollision(args.value, args.targetFacet, args.valueToFacet);
+  const holder = findValueCollision(
+    args.value,
+    args.targetFacet,
+    args.valueToFacet,
+    args.includeBuiltIns ?? true,
+  );
   if (holder && holder !== args.sourceFacet)
     return `"${normalizeTagValue(args.value)}" already lives in ${facetMoveLabel(holder)}.`;
   return null;

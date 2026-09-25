@@ -74,6 +74,7 @@ function validateFacetValue(
   valueRaw: string,
   maps: RegistryMaps,
   existingIds: ReadonlySet<string>,
+  includeBuiltIns = true,
 ): { facet: string; value: string } | string {
   const facet = parseTagFacet(facetRaw);
   const value = parseTagValue(valueRaw);
@@ -81,7 +82,7 @@ function validateFacetValue(
   if (!isValidTagFacet(facet)) return "Facet must be 1–24 characters, starting with a letter.";
   if (!isValidTagValue(value))
     return "Value must be 1–24 characters: letters, digits, spaces, hyphens (Rice Bowl → rice-bowl).";
-  const collision = findValueCollision(value, facet, maps.valueToFacet);
+  const collision = findValueCollision(value, facet, maps.valueToFacet, includeBuiltIns);
   if (collision) return `"${value}" already lives in ${facetLabel(collision)}.`;
   if (existingIds.has(tagDocId(facet, value)))
     return `"${value}" is already in ${facetLabel(facet)}.`;
@@ -203,7 +204,7 @@ function RenameBox({ foods, maps, sourceFacet, sourceValue, tags, uid }: RenameB
       toast.error("Pick a different name.");
       return;
     }
-    const collision = findValueCollision(target, sourceFacet, maps.valueToFacet);
+    const collision = findValueCollision(target, sourceFacet, maps.valueToFacet, tags.length === 0);
     if (collision) {
       toast.error(`"${target}" already lives in ${facetLabel(collision)}.`);
       return;
@@ -361,6 +362,7 @@ function MoveDialog({ facets, foods, maps, onClose, request, tags, uid }: MoveDi
   const targetError =
     request && targetFacet !== ""
       ? validateMoveTarget({
+          includeBuiltIns: tags.length === 0,
           sourceFacet,
           targetFacet,
           value: sourceValue,
@@ -375,13 +377,14 @@ function MoveDialog({ facets, foods, maps, onClose, request, tags, uid }: MoveDi
       .map((facet) => ({
         facet,
         reason: validateMoveTarget({
+          includeBuiltIns: tags.length === 0,
           sourceFacet,
           targetFacet: facet,
           value: sourceValue,
           valueToFacet: maps.valueToFacet,
         }),
       }));
-  }, [facets, maps.valueToFacet, request, sourceFacet, sourceValue]);
+  }, [facets, maps.valueToFacet, request, sourceFacet, sourceValue, tags.length]);
 
   const needsConfirm = (preview?.count ?? 0) > 0;
   const alreadyTargetCount = preview?.alreadyTarget.length ?? 0;
@@ -779,7 +782,7 @@ function AddValueBox({
   async function handleAdd(): Promise<void> {
     if (!requireUid(uid)) return;
     const existingIds = new Set(tags.map((tag) => tag.id));
-    const parsed = validateFacetValue(facet, value, maps, existingIds);
+    const parsed = validateFacetValue(facet, value, maps, existingIds, tags.length === 0);
     if (typeof parsed === "string") {
       toast.error(parsed);
       return;
@@ -828,7 +831,7 @@ function NewFacetBox({
   async function handleAdd(): Promise<void> {
     if (!requireUid(uid)) return;
     const existingIds = new Set(tags.map((tag) => tag.id));
-    const parsed = validateFacetValue(facet, value, maps, existingIds);
+    const parsed = validateFacetValue(facet, value, maps, existingIds, tags.length === 0);
     if (typeof parsed === "string") {
       toast.error(parsed);
       return;
@@ -897,7 +900,7 @@ function PendingRow({
   async function handlePromote(): Promise<void> {
     if (!requireUid(uid)) return;
     const existingIds = new Set(tags.map((tag) => tag.id));
-    const parsed = validateFacetValue(facet, token, maps, existingIds);
+    const parsed = validateFacetValue(facet, token, maps, existingIds, tags.length === 0);
     if (typeof parsed === "string") {
       toast.error(parsed);
       return;
@@ -1020,6 +1023,7 @@ export function TagsManagerClient({
           dragSource={dragSource}
           facet={facet}
           foods={foods}
+          includeBuiltIns={tags.length === 0}
           key={facet}
           maps={maps}
           onDragEndCard={() => setDragSource(null)}
@@ -1098,6 +1102,7 @@ function FacetSection({
   dragSource,
   facet,
   foods,
+  includeBuiltIns,
   maps,
   onDragEndCard,
   onDragStartCard,
@@ -1110,6 +1115,7 @@ function FacetSection({
   dragSource: DragSource | null;
   facet: string;
   foods: FoodPlace[];
+  includeBuiltIns: boolean;
   maps: RegistryMaps;
   onDragEndCard: () => void;
   onDragStartCard: (source: DragSource) => void;
@@ -1124,6 +1130,7 @@ function FacetSection({
 
   function describeTarget(source: DragSource): { reason: string | null; valid: boolean } {
     const reason = validateMoveTarget({
+      includeBuiltIns,
       sourceFacet: source.sourceFacet,
       targetFacet: facet,
       value: source.sourceValue,
