@@ -1,6 +1,6 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -18,8 +18,10 @@ import { Input } from "@/components/ui/input";
 import {
   addTagSynonym as addTagSynonymRemote,
   applyTagMergeToPlaces,
+  applyTagMoveToPlaces as applyTagMoveToPlacesRemote,
   createTagDoc as createTagDocRemote,
   deleteTagDoc as deleteTagDocRemote,
+  moveTagSynonyms as moveTagSynonymsRemote,
   promotePendingToOpenPlaces as promotePendingToOpenPlacesRemote,
   setTagDeprecated as setTagDeprecatedRemote,
   stripTagFromPlaces as stripTagFromPlacesRemote,
@@ -38,6 +40,8 @@ import {
   parseTagFacet,
   parseTagValue,
   previewMerge,
+  previewMoveCaps,
+  validateMoveTarget,
   type RegistryMaps,
 } from "@/lib/tags";
 import { isKnownFacet, KNOWN_FACETS, tagDocId } from "@/lib/tags/types";
@@ -295,6 +299,269 @@ function RenameBox({ foods, maps, sourceFacet, sourceValue, tags, uid }: RenameB
   );
 }
 
+interface MoveRequest {
+  sourceFacet: string;
+  sourceValue: string;
+  targetFacet: string;
+}
+
+interface DragSource {
+  sourceFacet: string;
+  sourceValue: string;
+}
+
+interface MoveDialogProps {
+  facets: string[];
+  foods: FoodPlace[];
+  maps: RegistryMaps;
+  onClose: () => void;
+  request: MoveRequest | null;
+  tags: TagDoc[];
+  uid: string | null;
+}
+
+// Cross-facet relocation dialog: the value moves byte-identical, synonyms
+// follow it, the source retires. Drops only open this dialog — nothing
+// writes before Save with the impact checkbox checked.
+function MoveDialog({ facets, foods, maps, onClose, request, tags, uid }: MoveDialogProps) {
+  const [targetFacet, setTargetFacet] = useState(request?.targetFacet ?? "");
+  const [confirmed, setConfirmed] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const sourceFacet = request?.sourceFacet ?? "";
+  const sourceValue = request?.sourceValue ?? "";
+  const sourceId = request ? tagDocId(sourceFacet, sourceValue) : "";
+  const sourceDoc = request ? tags.find((tag) => tag.id === sourceId) : undefined;
+  const targetId = request && targetFacet !== "" ? tagDocId(targetFacet, sourceValue) : "";
+  const isSingleTarget = targetFacet === "priceTier" || targetFacet === "healthStyle";
+
+  const preview = useMemo(() => {
+    if (!request || targetFacet === "") return null;
+    return previewMerge({
+      places: foods,
+      sourceFacet,
+      sourceValue,
+      targetFacet,
+      targetValue: sourceValue,
+    });
+  }, [foods, request, sourceFacet, sourceValue, targetFacet]);
+
+  const caps = useMemo(() => {
+    if (!request || targetFacet === "") return null;
+    return previewMoveCaps({
+      places: foods,
+      sourceFacet,
+      sourceValue,
+      targetFacet,
+      targetValue: sourceValue,
+    });
+  }, [foods, request, sourceFacet, sourceValue, targetFacet]);
+
+  const targetError =
+    request && targetFacet !== ""
+      ? validateMoveTarget({
+          sourceFacet,
+          targetFacet,
+          value: sourceValue,
+          valueToFacet: maps.valueToFacet,
+        })
+      : null;
+
+  const options = useMemo(() => {
+    if (!request) return [];
+    return facets
+      .filter((facet) => facet !== sourceFacet)
+      .map((facet) => ({
+        facet,
+        reason: validateMoveTarget({
+          sourceFacet,
+          targetFacet: facet,
+          value: sourceValue,
+          valueToFacet: maps.valueToFacet,
+        }),
+      }));
+  }, [facets, maps.valueToFacet, request, sourceFacet, sourceValue]);
+
+  const needsConfirm = (preview?.count ?? 0) > 0;
+  const alreadyTargetCount = preview?.alreadyTarget.length ?? 0;
+  const refusedCount = caps?.refused.length ?? 0;
+
+  async function handleSave(): Promise<void> {
+    if (!request) return;
+    if (!requireUid(uid)) return;
+    if (targetFacet === "") {
+      toast.error("Pick a target facet.");
+      return;
+    }
+    if (targetError) {
+      toast.error(targetError);
+      return;
+    }
+    if (!preview || !caps) return;
+    if (needsConfirm && !confirmed) {
+      toast.error("Confirm the impact first — check the box above.");
+      return;
+    }
+    setApplying(true);
+    setProgress(null);
+    try {
+      const isNewTarget = !tags.some((tag) => tag.id === targetId);
+      if (isNewTarget) {
+        await createTagDocRemote({ facet: targetFacet, value: sourceValue }, uid);
+      }
+      // Fresh snapshot inside the writer is the stale-state re-check: the
+      // preview above is advisory, the commit reads live docs.
+      const { failed, updated } = await applyTagMoveToPlacesRemote({
+        onProgress: (done, total) => setProgress({ done, total }),
+        skipIds: new Set(caps.refused.map((row) => row.id)),
+        sourceFacet,
+        sourceValue,
+        targetFacet,
+        targetValue: sourceValue,
+      });
+      if (sourceDoc && sourceDoc.synonyms.length > 0) {
+        await moveTagSynonymsRemote({
+          sourceId,
+          synonyms: sourceDoc.synonyms,
+          targetId,
+          uid,
+        });
+      }
+      await setTagDeprecatedRemote(sourceId, true, uid);
+      const blocked = refusedCount + failed.length;
+      if (blocked > 0) {
+        const names = [...caps.refused, ...failed]
+          .slice(0, 3)
+          .map((row) => {
+            const place = foods.find((item) => item.id === row.id);
+            return place?.name ?? row.id;
+          })
+          .join(", ");
+        toast.success(
+          `Moved ${updated} place${updated === 1 ? "" : "s"}; ${blocked} kept the old value: ${names}${blocked > 3 ? ` +${blocked - 3} more` : ""}.`,
+        );
+      } else if (updated === 0) {
+        toast.success(`No places use ${sourceValue} — registry entry relocated.`);
+      } else {
+        toast.success(`Moved ${updated} place${updated === 1 ? "" : "s"}; ${sourceValue} retired.`);
+      }
+      onClose();
+    } catch {
+      toast.error("Could not apply the move. Please try again.");
+    } finally {
+      setApplying(false);
+      setProgress(null);
+    }
+  }
+
+  return (
+    <Dialog open={request !== null} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {request ? `Move ${sourceValue} to another facet?` : "Move tag"}
+          </DialogTitle>
+          <DialogDescription>
+            The value moves unchanged. Synonyms move with it and the source entry retires.
+          </DialogDescription>
+        </DialogHeader>
+        {request && (
+          <div className="grid gap-2.5">
+            <label className="grid gap-2.5 text-sm">
+              <span className="font-medium">Target facet</span>
+              <select
+                aria-label={`Move ${sourceValue} to facet`}
+                className="rounded-md border bg-transparent px-2.5 py-2 text-sm shadow-xs outline-none"
+                onChange={(event) => {
+                  setTargetFacet(event.target.value);
+                  setConfirmed(false);
+                }}
+                value={targetFacet}
+              >
+                <option value="">Pick a facet…</option>
+                {options.map((option) => (
+                  <option disabled={option.reason !== null} key={option.facet} value={option.facet}>
+                    {option.reason
+                      ? `${facetLabel(option.facet)} — ${option.reason}`
+                      : facetLabel(option.facet)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {targetError && (
+              <p className="text-sm text-destructive" role="alert">
+                {targetError}
+              </p>
+            )}
+            {preview && !targetError && (
+              <p className="text-sm text-muted-foreground" aria-live="polite">
+                {preview.count === 0
+                  ? `No places use ${sourceValue} — only the registry entry moves.`
+                  : `${preview.count} place${preview.count === 1 ? "" : "s"} use${preview.count === 1 ? "s" : ""} ${sourceValue}: ${preview.affected
+                      .slice(0, 3)
+                      .map((place) => place.name)
+                      .join(", ")}${preview.count > 3 ? ` +${preview.count - 3} more` : ""}`}
+                {preview.count > 0 && alreadyTargetCount > 0
+                  ? ` ${alreadyTargetCount} already have ${sourceValue} there — they'll be ${isSingleTarget ? "overwritten" : "deduped"}.`
+                  : ""}
+              </p>
+            )}
+            {preview && !targetError && preview.count > 0 && (
+              <p className="text-sm text-muted-foreground">
+                Stops matching {facetLabel(sourceFacet)} filters, starts matching{" "}
+                {facetLabel(targetFacet)} filters.
+              </p>
+            )}
+            {sourceDoc && sourceDoc.synonyms.length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                Synonyms move too: {sourceDoc.synonyms.join(", ")}.
+              </p>
+            )}
+            {caps && refusedCount > 0 && !targetError && (
+              <p className="text-sm text-destructive" role="alert">
+                {refusedCount} place{refusedCount === 1 ? "" : "s"} would exceed caps and{" "}
+                {refusedCount === 1 ? "keeps" : "keep"} the old value:{" "}
+                {caps.refused
+                  .slice(0, 3)
+                  .map((row) => {
+                    const place = foods.find((item) => item.id === row.id);
+                    return `${place?.name ?? row.id} (${row.reason})`;
+                  })
+                  .join(", ")}
+                {refusedCount > 3 ? ` +${refusedCount - 3} more` : ""}.
+              </p>
+            )}
+            {needsConfirm && !targetError && (
+              <ConfirmCheckbox
+                checked={confirmed}
+                onChange={setConfirmed}
+                text={`Yes, rewrite ${preview?.count} place${(preview?.count ?? 0) === 1 ? "" : "s"}.`}
+              />
+            )}
+            {applying && progress && (
+              <p className="text-sm text-muted-foreground" aria-live="polite">
+                Moving… {progress.done} of {progress.total} places.
+              </p>
+            )}
+          </div>
+        )}
+        <DialogFooter>
+          <Button disabled={applying} onClick={onClose} variant="outline">
+            Cancel
+          </Button>
+          <Button
+            disabled={applying || !request || targetFacet === "" || targetError !== null}
+            onClick={handleSave}
+          >
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 interface DeleteBoxProps {
   count: number;
   examples: string[];
@@ -388,13 +655,26 @@ function ConfirmCheckbox({
 interface TagRowProps {
   foods: FoodPlace[];
   maps: RegistryMaps;
+  onDragEndCard: () => void;
+  onDragStartCard: (source: DragSource) => void;
+  onMoveCard: (sourceFacet: string, sourceValue: string) => void;
   row: FacetRow;
   sourceFacet: string;
   tags: TagDoc[];
   uid: string | null;
 }
 
-function TagRow({ foods, maps, row, sourceFacet, tags, uid }: TagRowProps) {
+function TagRow({
+  foods,
+  maps,
+  onDragEndCard,
+  onDragStartCard,
+  onMoveCard,
+  row,
+  sourceFacet,
+  tags,
+  uid,
+}: TagRowProps) {
   const [toggling, setToggling] = useState(false);
 
   async function handleToggleDeprecate(): Promise<void> {
@@ -414,6 +694,27 @@ function TagRow({ foods, maps, row, sourceFacet, tags, uid }: TagRowProps) {
   return (
     <li className="grid gap-2.5 rounded-lg border p-5">
       <div className="flex flex-wrap items-center gap-2.5">
+        {row.doc && (
+          <span
+            aria-label={`Drag ${row.value} to another facet`}
+            className="cursor-grab text-muted-foreground hover:text-foreground"
+            draggable
+            onDragEnd={onDragEndCard}
+            onDragStart={(event) => {
+              event.dataTransfer.setData(
+                "application/json",
+                JSON.stringify({ sourceFacet, sourceValue: row.value }),
+              );
+              event.dataTransfer.effectAllowed = "move";
+              onDragStartCard({ sourceFacet, sourceValue: row.value });
+            }}
+            role="button"
+            tabIndex={0}
+            title="Drag to another facet"
+          >
+            <GripVertical aria-hidden="true" className="size-4" />
+          </span>
+        )}
         <p className="font-medium">{formatFacetValue(row.value)}</p>
         {row.doc?.deprecated && <Badge variant="outline">Deprecated</Badge>}
         {!row.doc && <Badge variant="outline">Not in registry</Badge>}
@@ -445,6 +746,9 @@ function TagRow({ foods, maps, row, sourceFacet, tags, uid }: TagRowProps) {
             tags={tags}
             uid={uid}
           />
+          <Button onClick={() => onMoveCard(sourceFacet, row.value)} size="sm" variant="ghost">
+            Move…
+          </Button>
           <DeleteBox
             count={row.count}
             examples={row.examples}
@@ -652,6 +956,8 @@ export function TagsManagerClient({
   const [tags, setTags] = useState<TagDoc[]>(initialTags);
   const [uid, setUid] = useState<string | null>(null);
   const [registryError, setRegistryError] = useState<string | null>(null);
+  const [moveRequest, setMoveRequest] = useState<MoveRequest | null>(null);
+  const [dragSource, setDragSource] = useState<DragSource | null>(null);
 
   useEffect(() => subscribeAuthUser((user) => setUid(user?.uid ?? null), { bypass }), [bypass]);
 
@@ -711,16 +1017,57 @@ export function TagsManagerClient({
       </div>
       {facets.map((facet) => (
         <FacetSection
+          dragSource={dragSource}
           facet={facet}
           foods={foods}
           key={facet}
           maps={maps}
+          onDragEndCard={() => setDragSource(null)}
+          onDragStartCard={setDragSource}
+          onDropCard={(targetFacet) => {
+            if (!dragSource) return;
+            setMoveRequest({
+              sourceFacet: dragSource.sourceFacet,
+              sourceValue: dragSource.sourceValue,
+              targetFacet,
+            });
+            setDragSource(null);
+          }}
+          onMoveCard={(sourceFacet, sourceValue) =>
+            setMoveRequest({ sourceFacet, sourceValue, targetFacet: "" })
+          }
           tags={tags}
           uid={uid}
           usage={usage}
         />
       ))}
-      <section className="grid gap-2.5" aria-label="Pending review queue">
+      <MoveDialog
+        facets={facets}
+        foods={foods}
+        key={
+          moveRequest
+            ? `${moveRequest.sourceFacet}:${moveRequest.sourceValue}:${moveRequest.targetFacet}`
+            : "closed"
+        }
+        maps={maps}
+        onClose={() => setMoveRequest(null)}
+        request={moveRequest}
+        tags={tags}
+        uid={uid}
+      />
+      <section
+        className="grid gap-2.5"
+        aria-label="Pending review queue"
+        onDragOver={(event) => {
+          if (dragSource) event.preventDefault();
+        }}
+        onDrop={(event) => {
+          if (!dragSource) return;
+          event.preventDefault();
+          setDragSource(null);
+          toast.error("Pending is the unreviewed queue — resolved tags never move there.");
+        }}
+      >
         <h2 className="text-xl font-semibold">Pending</h2>
         <p className="text-sm text-muted-foreground">
           Free-text ideas from contributors. Promote one to a facet to make it suggestible.
@@ -748,24 +1095,78 @@ export function TagsManagerClient({
 }
 
 function FacetSection({
+  dragSource,
   facet,
   foods,
   maps,
+  onDragEndCard,
+  onDragStartCard,
+  onDropCard,
+  onMoveCard,
   tags,
   uid,
   usage,
 }: {
+  dragSource: DragSource | null;
   facet: string;
   foods: FoodPlace[];
   maps: RegistryMaps;
+  onDragEndCard: () => void;
+  onDragStartCard: (source: DragSource) => void;
+  onDropCard: (targetFacet: string) => void;
+  onMoveCard: (sourceFacet: string, sourceValue: string) => void;
   tags: TagDoc[];
   uid: string | null;
   usage: ReturnType<typeof describeTagUsage>;
 }) {
   const rows = useFacetRows(facet, tags, usage);
+  const [dragHint, setDragHint] = useState<{ reason: string | null; valid: boolean } | null>(null);
+
+  function describeTarget(source: DragSource): { reason: string | null; valid: boolean } {
+    const reason = validateMoveTarget({
+      sourceFacet: source.sourceFacet,
+      targetFacet: facet,
+      value: source.sourceValue,
+      valueToFacet: maps.valueToFacet,
+    });
+    return { reason, valid: reason === null };
+  }
+
   return (
-    <section className="grid gap-2.5" aria-label={`${facetLabel(facet)} tags`}>
+    <section
+      className={`grid gap-2.5 rounded-lg ${dragHint ? (dragHint.valid ? "ring-2 ring-primary" : "ring-2 ring-destructive") : ""}`}
+      aria-label={`${facetLabel(facet)} tags`}
+      onDragLeave={() => setDragHint(null)}
+      onDragOver={(event) => {
+        if (!dragSource) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setDragHint(describeTarget(dragSource));
+      }}
+      onDrop={(event) => {
+        if (!dragSource) return;
+        event.preventDefault();
+        const hint = describeTarget(dragSource);
+        setDragHint(null);
+        if (!hint.valid) {
+          onDragEndCard();
+          toast.error(hint.reason ?? "That facet cannot accept this tag.");
+          return;
+        }
+        onDropCard(facet);
+      }}
+    >
       <h2 className="text-xl font-semibold">{facetLabel(facet)}</h2>
+      {dragHint && (
+        <p
+          className={`text-sm ${dragHint.valid ? "text-muted-foreground" : "text-destructive"}`}
+          role="status"
+        >
+          {dragHint.valid
+            ? `Drop to move here — preview first, nothing writes yet.`
+            : dragHint.reason}
+        </p>
+      )}
       <AddValueBox facet={facet} maps={maps} tags={tags} uid={uid} />
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">No values yet.</p>
@@ -776,6 +1177,9 @@ function FacetSection({
               foods={foods}
               key={row.value}
               maps={maps}
+              onDragEndCard={onDragEndCard}
+              onDragStartCard={onDragStartCard}
+              onMoveCard={onMoveCard}
               row={row}
               sourceFacet={facet}
               tags={tags}

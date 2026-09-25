@@ -307,6 +307,124 @@ export function previewMerge(args: {
   return { affected, alreadyTarget, count: affected.length };
 }
 
+export interface MoveCapRefusal {
+  id: string;
+  name: string;
+  reason: string;
+}
+
+const KNOWN_MULTI_CAPS: Record<string, number> = {
+  ingredients: 5,
+  menus: 3,
+  origins: 3,
+  servings: 2,
+};
+
+const MAX_MOVE_OPEN_PER_FACET = 5;
+
+const MAX_MOVE_OPEN_FACETS = 8;
+
+const MAX_MOVE_RESOLVED_TOTAL = 8;
+
+function countResolvedTotal(tags: FoodTags): number {
+  const openTotal = Object.values(tags.open ?? {}).reduce((sum, list) => sum + list.length, 0);
+  return (
+    tags.menus.length +
+    tags.servings.length +
+    tags.ingredients.length +
+    tags.origins.length +
+    (tags.priceTier ? 1 : 0) +
+    (tags.healthStyle ? 1 : 0) +
+    openTotal
+  );
+}
+
+// Pre-flight for cross-facet moves: simulate replaceTagValueInPlace on every
+// affected place and refuse the docs whose result would violate caps. Single-
+// value targets overwrite by design and never refuse on caps.
+export function previewMoveCaps(args: {
+  places: FoodPlace[];
+  sourceFacet: string;
+  sourceValue: string;
+  targetFacet: string;
+  targetValue: string;
+}): { refused: MoveCapRefusal[]; updatable: { id: string; name: string }[] } {
+  const preview = previewMerge(args);
+  const refused: MoveCapRefusal[] = [];
+  const updatable: { id: string; name: string }[] = [];
+  const byId = new Map(args.places.map((place) => [place.id, place]));
+  for (const holder of preview.affected) {
+    const place = byId.get(holder.id);
+    if (!place) continue;
+    const next = replaceTagValueInPlace(
+      place.tags,
+      args.sourceFacet,
+      args.sourceValue,
+      args.targetFacet,
+      args.targetValue,
+    );
+    if (!next) continue;
+    if (args.targetFacet === "priceTier" || args.targetFacet === "healthStyle") {
+      updatable.push(holder);
+      continue;
+    }
+    const cap = KNOWN_MULTI_CAPS[args.targetFacet] ?? MAX_MOVE_OPEN_PER_FACET;
+    const held = storedValuesFor({ ...place, tags: next }, args.targetFacet);
+    if (held.length > cap) {
+      refused.push({
+        id: holder.id,
+        name: holder.name,
+        reason: `${facetMoveLabel(args.targetFacet)} holds at most ${cap}`,
+      });
+      continue;
+    }
+    if (Object.keys(next.open ?? {}).length > MAX_MOVE_OPEN_FACETS) {
+      refused.push({ id: holder.id, name: holder.name, reason: "At most 8 open facets" });
+      continue;
+    }
+    if (countResolvedTotal(next) > MAX_MOVE_RESOLVED_TOTAL) {
+      refused.push({
+        id: holder.id,
+        name: holder.name,
+        reason: "Resolved total would exceed 8",
+      });
+      continue;
+    }
+    updatable.push(holder);
+  }
+  return { refused, updatable };
+}
+
+function facetMoveLabel(facet: string): string {
+  if (facet === "menus") return "Menu";
+  if (facet === "servings") return "Serving";
+  if (facet === "ingredients") return "Ingredient";
+  if (facet === "origins") return "Origin";
+  if (facet === "priceTier") return "Price";
+  if (facet === "healthStyle") return "Style";
+  return facet;
+}
+
+// Shared move-target guard for dialog + drag-over: pending is never a target,
+// same-facet is a rename (not a move), third-facet collisions name the
+// holding facet (the source facet itself is never a collision).
+export function validateMoveTarget(args: {
+  sourceFacet: string;
+  targetFacet: string;
+  value: string;
+  valueToFacet?: ReadonlyMap<string, string>;
+}): string | null {
+  if (args.targetFacet === "pending")
+    return "Pending is the unreviewed queue — resolved tags never move there.";
+  if (args.targetFacet === args.sourceFacet)
+    return "That is the current facet — rename instead of moving.";
+  if (args.targetFacet.trim() === "") return "Pick a facet.";
+  const holder = findValueCollision(args.value, args.targetFacet, args.valueToFacet);
+  if (holder && holder !== args.sourceFacet)
+    return `"${normalizeTagValue(args.value)}" already lives in ${facetMoveLabel(holder)}.`;
+  return null;
+}
+
 // Open-facet selections match stored open groups; OR-within the facet,
 // AND-across facets.
 export function placeMatchesOpenFacets(

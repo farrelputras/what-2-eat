@@ -444,6 +444,89 @@ export async function applyTagMergeToPlaces(input: {
   return count;
 }
 
+// Cross-facet move: rewrite affected food_places docs in sequential ≤500-doc
+// chunks so large catalogs never overflow a single writeBatch. Per-doc cap
+// refusals are skipped and reported; commit failures are reported per chunk
+// with the docs retried on the next run (no silent drops).
+export async function applyTagMoveToPlaces(input: {
+  sourceFacet: string;
+  sourceValue: string;
+  targetFacet: string;
+  targetValue: string;
+  onProgress?: (completed: number, total: number) => void;
+  skipIds?: ReadonlySet<string>;
+}): Promise<{ failed: { id: string; message: string }[]; updated: number }> {
+  const db = getFirebaseDb();
+  if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
+  const snapshot = await getDocs(collection(db, FOOD_PLACES_COLLECTION));
+  const pending: { ref: (typeof snapshot.docs)[number]["ref"]; tags: Record<string, unknown> }[] =
+    [];
+  for (const docSnapshot of snapshot.docs) {
+    if (input.skipIds?.has(docSnapshot.id)) continue;
+    const place = toFoodPlace(docSnapshot.id, docSnapshot.data());
+    if (!place) continue;
+    const next = replaceTagValueInPlace(
+      place.tags,
+      input.sourceFacet,
+      input.sourceValue,
+      input.targetFacet,
+      input.targetValue,
+    );
+    if (!next) continue;
+    pending.push({ ref: docSnapshot.ref, tags: tagsToDoc(next) });
+  }
+  const failed: { id: string; message: string }[] = [];
+  let updated = 0;
+  for (let start = 0; start < pending.length; start += 500) {
+    const chunk = pending.slice(start, start + 500);
+    const batch = writeBatch(db);
+    for (const row of chunk) {
+      batch.update(row.ref, { tags: row.tags, updatedAt: serverTimestamp() });
+    }
+    try {
+      await batch.commit();
+      updated += chunk.length;
+    } catch (error) {
+      for (const row of chunk) {
+        failed.push({
+          id: row.ref.id,
+          message: error instanceof Error ? error.message : "Write failed — retry this move.",
+        });
+      }
+    }
+    input.onProgress?.(updated + failed.length, pending.length);
+  }
+  return { failed, updated };
+}
+
+// Synonym relocation for moves: copy source synonyms onto the target doc,
+// then empty the source. Target merge keeps bare-token resolution pointed at
+// exactly one home; the source clear prevents forked shortcuts.
+export async function moveTagSynonyms(input: {
+  sourceId: string;
+  synonyms: string[];
+  targetId: string;
+  uid: string;
+}): Promise<void> {
+  const db = getFirebaseDb();
+  if (!db) throw new Error("Firebase is not configured. Fill in your .env.local values.");
+  const clean = input.synonyms
+    .map((synonym) => parseTagValue(synonym))
+    .filter((synonym) => synonym !== "");
+  if (clean.length > 0) {
+    await updateDoc(doc(db, TAGS_COLLECTION, input.targetId), {
+      synonyms: arrayUnion(...clean),
+      updatedAt: serverTimestamp(),
+      updatedByUid: input.uid,
+    });
+  }
+  await updateDoc(doc(db, TAGS_COLLECTION, input.sourceId), {
+    synonyms: [],
+    updatedAt: serverTimestamp(),
+    updatedByUid: input.uid,
+  });
+}
+
 // Promote relocation: move a pending token into an open facet group on every
 // place that holds it. Source is always pending; per-doc cap refusals are
 // skipped and reported so the manager can surface them.
